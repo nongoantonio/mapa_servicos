@@ -1,3 +1,5 @@
+export type PlaceStatus = 'open' | 'closed' | 'out_of_stock'
+
 export type Place = {
   id: string
   name: string
@@ -5,5 +7,6 @@ export type Place = {
   address: string | null
   lat: number
   lng: number
-  current_status: 'open' | 'closed' | 'out_of_stock' | null
+  current_status: PlaceStatus | null
+  status_updated_at: string | null
 }

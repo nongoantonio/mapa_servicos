@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import type { Session } from '@supabase/supabase-js'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
-import type { Place } from '../types'
+import type { Place, PlaceStatus } from '../types'
 
 const COLORS = { pharmacy: '#059669', fuel: '#f59e0b' }
 const LABELS = { pharmacy: 'Farmácia', fuel: 'Bomba de combustível' }
@@ -15,20 +16,65 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'fuel', label: 'Bombas' },
 ]
 
+function statusLabel(status: PlaceStatus, category: Place['category']) {
+  if (status === 'open') return 'Aberto'
+  if (status === 'closed') return 'Fechado'
+  return category === 'fuel' ? 'Sem combustível' : 'Sem stock'
+}
+
+function timeAgo(iso: string) {
+  const minutes = Math.floor((Date.now() - new Date(iso).getTime()) / 60000)
+  if (minutes < 1) return 'agora mesmo'
+  if (minutes < 60) return `há ${minutes} min`
+  const hours = Math.floor(minutes / 60)
+  if (hours < 24) return `há ${hours} h`
+  return `há ${Math.floor(hours / 24)} d`
+}
+
+const STATUS_BUTTONS: { value: PlaceStatus; className: string }[] = [
+  { value: 'open', className: 'bg-emerald-600 hover:bg-emerald-700' },
+  { value: 'closed', className: 'bg-red-600 hover:bg-red-700' },
+  { value: 'out_of_stock', className: 'bg-amber-500 hover:bg-amber-600' },
+]
+
 export default function MapView() {
   const [places, setPlaces] = useState<Place[]>([])
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
+  const [session, setSession] = useState<Session | null>(null)
+  const [savingId, setSavingId] = useState<string | null>(null)
+
+  const loadPlaces = useCallback(async () => {
+    const { data, error } = await supabase.from('places_with_status').select('*')
+    if (error) setError(error.message)
+    else setPlaces(data as Place[])
+  }, [])
 
   useEffect(() => {
-    supabase
-      .from('places_with_status')
-      .select('*')
-      .then(({ data, error }) => {
-        if (error) setError(error.message)
-        else setPlaces(data as Place[])
-      })
+    loadPlaces()
+  }, [loadPlaces])
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
   }, [])
+
+  async function reportStatus(placeId: string, status: PlaceStatus) {
+    if (!session) return
+    setSavingId(placeId)
+    const { error } = await supabase
+      .from('status_reports')
+      .insert({ place_id: placeId, user_id: session.user.id, status })
+    setSavingId(null)
+
+    if (error) {
+      setError(error.message)
+    } else {
+      setError(null)
+      await loadPlaces()
+    }
+  }
 
   const visiblePlaces = useMemo(
     () => (filter === 'all' ? places : places.filter((p) => p.category === filter)),
@@ -45,9 +91,7 @@ export default function MapView() {
             type="button"
             onClick={() => setFilter(f.id)}
             className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-              filter === f.id
-                ? 'bg-emerald-600 text-white'
-                : 'text-gray-600 hover:bg-gray-100'
+              filter === f.id ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'
             }`}
           >
             {f.label}
@@ -91,15 +135,43 @@ export default function MapView() {
             }}
           >
             <Popup>
-              <strong>{p.name}</strong>
-              <br />
-              {LABELS[p.category]}
-              {p.address && (
-                <>
-                  <br />
-                  {p.address}
-                </>
-              )}
+              <div className="min-w-[190px] space-y-1.5">
+                <strong>{p.name}</strong>
+                <div>{LABELS[p.category]}</div>
+                {p.address && <div>{p.address}</div>}
+
+                <div className="border-t border-gray-200 pt-1.5 text-xs">
+                  {p.current_status && p.status_updated_at ? (
+                    <span>
+                      <strong>{statusLabel(p.current_status, p.category)}</strong> ·{' '}
+                      {timeAgo(p.status_updated_at)}
+                    </span>
+                  ) : (
+                    <span className="text-gray-500">Ainda sem informação de estado</span>
+                  )}
+                </div>
+
+                {session ? (
+                  <div className="space-y-1">
+                    <div className="text-xs text-gray-500">Como está agora?</div>
+                    <div className="flex gap-1">
+                      {STATUS_BUTTONS.map((b) => (
+                        <button
+                          key={b.value}
+                          type="button"
+                          disabled={savingId === p.id}
+                          onClick={() => reportStatus(p.id, b.value)}
+                          className={`flex-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-white disabled:opacity-60 ${b.className}`}
+                        >
+                          {statusLabel(b.value, p.category)}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="text-xs text-gray-500">Entra para reportar o estado.</div>
+                )}
+              </div>
             </Popup>
           </CircleMarker>
         ))}
