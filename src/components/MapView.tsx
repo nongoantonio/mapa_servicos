@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
+import {
+  MapContainer,
+  TileLayer,
+  CircleMarker,
+  Popup,
+  useMap,
+  useMapEvents,
+} from 'react-leaflet'
 import type { Session } from '@supabase/supabase-js'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
@@ -46,6 +53,22 @@ function FlyToUser({ position }: { position: [number, number] | null }) {
   return null
 }
 
+// Quando o modo "adicionar" está activo, um clique no mapa escolhe a posição
+function ClickToPlace({
+  active,
+  onPick,
+}: {
+  active: boolean
+  onPick: (pos: [number, number]) => void
+}) {
+  useMapEvents({
+    click(e) {
+      if (active) onPick([e.latlng.lat, e.latlng.lng])
+    },
+  })
+  return null
+}
+
 export default function MapView() {
   const [places, setPlaces] = useState<Place[]>([])
   const [error, setError] = useState<string | null>(null)
@@ -55,6 +78,12 @@ export default function MapView() {
   const [userPos, setUserPos] = useState<[number, number] | null>(null)
   const [locating, setLocating] = useState(false)
   const [geoMessage, setGeoMessage] = useState<string | null>(null)
+
+  // Adicionar novo local
+  const [addMode, setAddMode] = useState(false)
+  const [newPos, setNewPos] = useState<[number, number] | null>(null)
+  const [newName, setNewName] = useState('')
+  const [newCategory, setNewCategory] = useState<Place['category']>('pharmacy')
 
   const loadPlaces = useCallback(async () => {
     const { data, error } = await supabase.from('places_with_status').select('*')
@@ -108,6 +137,35 @@ export default function MapView() {
     }
   }
 
+  function cancelAdd() {
+    setAddMode(false)
+    setNewPos(null)
+    setNewName('')
+  }
+
+  async function saveNewPlace(e: React.FormEvent) {
+    e.preventDefault()
+    if (!session || !newPos || newName.trim().length < 2) return
+
+    setSavingId('new')
+    const [lat, lng] = newPos
+    const { error } = await supabase.from('places').insert({
+      name: newName.trim(),
+      category: newCategory,
+      location: `SRID=4326;POINT(${lng} ${lat})`,
+      created_by: session.user.id,
+    })
+    setSavingId(null)
+
+    if (error) {
+      setError(error.message)
+    } else {
+      setError(null)
+      cancelAdd()
+      await loadPlaces()
+    }
+  }
+
   function locateMe() {
     if (!navigator.geolocation) {
       setGeoMessage('O teu browser não suporta localização.')
@@ -156,6 +214,82 @@ export default function MapView() {
         {error ? 'Erro: ' + error : `${visiblePlaces.length} locais`}
       </div>
 
+      {/* Botão Adicionar local (só com sessão) */}
+      {session && !addMode && (
+        <button
+          type="button"
+          onClick={() => setAddMode(true)}
+          className="absolute left-3 top-24 z-[1000] rounded-full bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-emerald-700"
+        >
+          + Adicionar local
+        </button>
+      )}
+
+      {/* Instrução enquanto escolhe a posição */}
+      {addMode && !newPos && (
+        <div className="absolute left-1/2 top-16 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-full bg-gray-900 px-4 py-2 text-xs text-white shadow-lg">
+          <span>Clica no mapa onde fica o local</span>
+          <button type="button" onClick={cancelAdd} className="font-semibold text-amber-300 hover:underline">
+            Cancelar
+          </button>
+        </div>
+      )}
+
+      {/* Formulário do novo local */}
+      {addMode && newPos && (
+        <form
+          onSubmit={saveNewPlace}
+          className="absolute bottom-6 left-1/2 z-[1000] w-72 -translate-x-1/2 space-y-3 rounded-2xl bg-white p-4 shadow-xl"
+        >
+          <h2 className="text-sm font-bold text-gray-900">Novo local</h2>
+
+          <input
+            type="text"
+            required
+            minLength={2}
+            maxLength={80}
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Nome do local"
+            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-600"
+          />
+
+          <div className="flex gap-1">
+            {(['pharmacy', 'fuel'] as const).map((c) => (
+              <button
+                key={c}
+                type="button"
+                onClick={() => setNewCategory(c)}
+                className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold ${
+                  newCategory === c
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                }`}
+              >
+                {LABELS[c]}
+              </button>
+            ))}
+          </div>
+
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={cancelAdd}
+              className="flex-1 rounded-lg border border-gray-200 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="submit"
+              disabled={savingId === 'new'}
+              className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+            >
+              {savingId === 'new' ? 'A guardar...' : 'Guardar'}
+            </button>
+          </div>
+        </form>
+      )}
+
       {/* Botão Perto de mim */}
       <div className="absolute bottom-8 right-3 z-[1000] flex flex-col items-end gap-2">
         {geoMessage && (
@@ -196,6 +330,7 @@ export default function MapView() {
         />
 
         <FlyToUser position={userPos} />
+        <ClickToPlace active={addMode} onPick={setNewPos} />
 
         {userPos && (
           <CircleMarker
@@ -205,6 +340,15 @@ export default function MapView() {
           >
             <Popup>Estás aqui</Popup>
           </CircleMarker>
+        )}
+
+        {/* Posição escolhida para o novo local */}
+        {newPos && (
+          <CircleMarker
+            center={newPos}
+            radius={10}
+            pathOptions={{ color: '#ffffff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1 }}
+          />
         )}
 
         {visiblePlaces.map((p) => (
