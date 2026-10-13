@@ -1,19 +1,21 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import {
   MapContainer,
   TileLayer,
-  CircleMarker,
+  Marker,
   Popup,
+  ZoomControl,
   useMap,
   useMapEvents,
 } from 'react-leaflet'
+import { divIcon } from 'leaflet'
 import type { Session } from '@supabase/supabase-js'
+import { Clock, Droplet, LocateFixed, MapPin, Plus, Star } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
 import type { Place, PlaceStatus } from '../types'
 
-const COLORS = { pharmacy: '#059669', fuel: '#f59e0b' }
-const LABELS = { pharmacy: 'Farmácia', fuel: 'Bomba de combustível' }
+const LABELS = { pharmacy: 'Farmácia', fuel: 'Bomba de combustível' } as const
 
 type Filter = 'all' | 'pharmacy' | 'fuel'
 
@@ -22,6 +24,26 @@ const FILTERS: { id: Filter; label: string }[] = [
   { id: 'pharmacy', label: 'Farmácias' },
   { id: 'fuel', label: 'Bombas' },
 ]
+
+const STATUS_ORDER: PlaceStatus[] = ['open', 'closed', 'out_of_stock']
+
+const STATUS_STYLES: Record<PlaceStatus, { badge: string; dot: string; button: string }> = {
+  open: {
+    badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    dot: 'bg-emerald-500',
+    button: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
+  },
+  closed: {
+    badge: 'bg-red-50 text-red-700 ring-red-200',
+    dot: 'bg-red-500',
+    button: 'border-red-200 text-red-700 hover:bg-red-50',
+  },
+  out_of_stock: {
+    badge: 'bg-amber-50 text-amber-700 ring-amber-200',
+    dot: 'bg-amber-500',
+    button: 'border-amber-200 text-amber-700 hover:bg-amber-50',
+  },
+}
 
 function statusLabel(status: PlaceStatus, category: Place['category']) {
   if (status === 'open') return 'Aberto'
@@ -38,13 +60,37 @@ function timeAgo(iso: string) {
   return `há ${Math.floor(hours / 24)} d`
 }
 
-const STATUS_BUTTONS: { value: PlaceStatus; className: string }[] = [
-  { value: 'open', className: 'bg-emerald-600 hover:bg-emerald-700' },
-  { value: 'closed', className: 'bg-red-600 hover:bg-red-700' },
-  { value: 'out_of_stock', className: 'bg-amber-500 hover:bg-amber-600' },
-]
+/* ── Ícones dos marcadores ── */
+const svg = (inner: string) =>
+  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
 
-// Move o mapa para a posição do utilizador sempre que ela muda
+const PLUS = '<path d="M5 12h14"/><path d="M12 5v14"/>'
+const DROP =
+  '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>'
+
+const makePin = (kind: 'pharmacy' | 'fuel' | 'new', inner: string) =>
+  divIcon({
+    className: '',
+    html: `<div class="pin pin-${kind}">${svg(inner)}</div>`,
+    iconSize: [34, 34],
+    iconAnchor: [17, 17],
+    popupAnchor: [0, -18],
+  })
+
+const ICONS = {
+  pharmacy: makePin('pharmacy', PLUS),
+  fuel: makePin('fuel', DROP),
+  added: makePin('new', PLUS),
+}
+
+const USER_ICON = divIcon({
+  className: '',
+  html: '<div class="user-dot"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+})
+
+/* ── Auxiliares do mapa ── */
 function FlyToUser({ position }: { position: [number, number] | null }) {
   const map = useMap()
   useEffect(() => {
@@ -53,7 +99,6 @@ function FlyToUser({ position }: { position: [number, number] | null }) {
   return null
 }
 
-// Quando o modo "adicionar" está activo, um clique no mapa escolhe a posição
 function ClickToPlace({
   active,
   onPick,
@@ -69,7 +114,149 @@ function ClickToPlace({
   return null
 }
 
-export default function MapView() {
+/* ── Estrelas que se enchem ao passar o rato ── */
+function StarRating({ disabled, onRate }: { disabled: boolean; onRate: (n: number) => void }) {
+  const [hover, setHover] = useState(0)
+  return (
+    <div className="flex items-center" onMouseLeave={() => setHover(0)}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button
+          key={n}
+          type="button"
+          disabled={disabled}
+          onMouseEnter={() => setHover(n)}
+          onClick={() => onRate(n)}
+          aria-label={`${n} ${n === 1 ? 'estrela' : 'estrelas'}`}
+          className="p-0.5 disabled:opacity-60"
+        >
+          <Star
+            className={`h-5 w-5 transition-colors ${
+              n <= hover ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+            }`}
+          />
+        </button>
+      ))}
+    </div>
+  )
+}
+
+/* ── Conteúdo do balão de um local ── */
+function PlacePopupContent({
+  place,
+  session,
+  saving,
+  onStatus,
+  onRate,
+}: {
+  place: Place
+  session: Session | null
+  saving: boolean
+  onStatus: (s: PlaceStatus) => void
+  onRate: (n: number) => void
+}) {
+  const isPharmacy = place.category === 'pharmacy'
+
+  return (
+    <div className="w-[260px] p-4">
+      <div className="flex items-start gap-3 pr-5">
+        <div
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white ${
+            isPharmacy ? 'bg-emerald-600' : 'bg-amber-500'
+          }`}
+        >
+          {isPharmacy ? <Plus className="h-5 w-5" strokeWidth={3} /> : <Droplet className="h-5 w-5" />}
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-sm font-bold leading-snug text-slate-900">{place.name}</h3>
+          <div className="text-xs text-slate-500">{LABELS[place.category]}</div>
+        </div>
+      </div>
+
+      {place.address && (
+        <div className="mt-2.5 flex items-start gap-1.5 text-xs text-slate-600">
+          <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+          <span>{place.address}</span>
+        </div>
+      )}
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        {place.current_status && place.status_updated_at ? (
+          <>
+            <span
+              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${
+                STATUS_STYLES[place.current_status].badge
+              }`}
+            >
+              <span className={`h-1.5 w-1.5 rounded-full ${STATUS_STYLES[place.current_status].dot}`} />
+              {statusLabel(place.current_status, place.category)}
+            </span>
+            <span className="inline-flex items-center gap-1 text-[11px] text-slate-400">
+              <Clock className="h-3 w-3" />
+              {timeAgo(place.status_updated_at)}
+            </span>
+          </>
+        ) : (
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-500">
+            Sem informação de estado
+          </span>
+        )}
+      </div>
+
+      <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-600">
+        <Star
+          className={`h-4 w-4 ${place.review_count ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
+        />
+        {place.review_count ? (
+          <span>
+            <strong className="text-slate-900">{Number(place.avg_rating).toFixed(1)}</strong> ·{' '}
+            {place.review_count} {place.review_count === 1 ? 'avaliação' : 'avaliações'}
+          </span>
+        ) : (
+          <span className="text-slate-400">Ainda sem avaliações</span>
+        )}
+      </div>
+
+      <div className="mt-3 border-t border-slate-100 pt-3">
+        {session ? (
+          <div className="space-y-3">
+            <div>
+              <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Como está agora?
+              </div>
+              <div className="grid grid-cols-3 gap-1.5">
+                {STATUS_ORDER.map((s) => (
+                  <button
+                    key={s}
+                    type="button"
+                    disabled={saving}
+                    onClick={() => onStatus(s)}
+                    className={`rounded-lg border px-1 py-1.5 text-[11px] font-semibold transition-colors disabled:opacity-60 ${STATUS_STYLES[s].button}`}
+                  >
+                    {statusLabel(s, place.category)}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                Avaliar
+              </span>
+              <StarRating disabled={saving} onRate={onRate} />
+            </div>
+          </div>
+        ) : (
+          <div className="text-xs text-slate-500">
+            Entra para reportar o estado e avaliar este local.
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+/* ── Componente principal ── */
+export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
   const [places, setPlaces] = useState<Place[]>([])
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -79,7 +266,6 @@ export default function MapView() {
   const [locating, setLocating] = useState(false)
   const [geoMessage, setGeoMessage] = useState<string | null>(null)
 
-  // Adicionar novo local
   const [addMode, setAddMode] = useState(false)
   const [newPos, setNewPos] = useState<[number, number] | null>(null)
   const [newName, setNewName] = useState('')
@@ -117,7 +303,6 @@ export default function MapView() {
     }
   }
 
-  // Uma avaliação por utilizador e local: se já existe, a nota é actualizada
   async function rate(placeId: string, rating: number) {
     if (!session) return
     setSavingId(placeId)
@@ -186,256 +371,222 @@ export default function MapView() {
     )
   }
 
+  const counts = useMemo(
+    () => ({
+      all: places.length,
+      pharmacy: places.filter((p) => p.category === 'pharmacy').length,
+      fuel: places.filter((p) => p.category === 'fuel').length,
+    }),
+    [places]
+  )
+
   const visiblePlaces = useMemo(
     () => (filter === 'all' ? places : places.filter((p) => p.category === filter)),
     [places, filter]
   )
 
   return (
-    <div className="relative h-full w-full">
-      {/* Barra de filtros */}
-      <div className="absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 gap-1 rounded-full bg-white p-1 shadow-lg">
-        {FILTERS.map((f) => (
-          <button
-            key={f.id}
-            type="button"
-            onClick={() => setFilter(f.id)}
-            className={`rounded-full px-4 py-1.5 text-xs font-semibold transition-colors ${
-              filter === f.id ? 'bg-emerald-600 text-white' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Contador */}
-      <div className="absolute right-3 top-3 z-[1000] rounded-full bg-white px-3 py-1.5 text-xs font-semibold shadow">
-        {error ? 'Erro: ' + error : `${visiblePlaces.length} locais`}
-      </div>
-
-      {/* Botão Adicionar local (só com sessão) */}
-      {session && !addMode && (
-        <button
-          type="button"
-          onClick={() => setAddMode(true)}
-          className="absolute left-3 top-24 z-[1000] rounded-full bg-emerald-600 px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-emerald-700"
-        >
-          + Adicionar local
-        </button>
-      )}
-
-      {/* Instrução enquanto escolhe a posição */}
-      {addMode && !newPos && (
-        <div className="absolute left-1/2 top-16 z-[1000] flex -translate-x-1/2 items-center gap-3 rounded-full bg-gray-900 px-4 py-2 text-xs text-white shadow-lg">
-          <span>Clica no mapa onde fica o local</span>
-          <button type="button" onClick={cancelAdd} className="font-semibold text-amber-300 hover:underline">
-            Cancelar
-          </button>
+    <div className={`relative h-full w-full ${addMode ? 'adding' : ''}`}>
+      {/* Cabeçalho */}
+      <header className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-wrap items-start justify-between gap-2 p-3">
+        <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-black/5 backdrop-blur">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white">
+            <MapPin className="h-5 w-5" />
+          </div>
+          <div className="leading-tight">
+            <div className="text-sm font-bold text-slate-900">Mapa de Serviços</div>
+            <div className="text-[11px] text-slate-500">Luanda · actualizado pela comunidade</div>
+          </div>
         </div>
-      )}
 
-      {/* Formulário do novo local */}
-      {addMode && newPos && (
-        <form
-          onSubmit={saveNewPlace}
-          className="absolute bottom-6 left-1/2 z-[1000] w-72 -translate-x-1/2 space-y-3 rounded-2xl bg-white p-4 shadow-xl"
-        >
-          <h2 className="text-sm font-bold text-gray-900">Novo local</h2>
-
-          <input
-            type="text"
-            required
-            minLength={2}
-            maxLength={80}
-            value={newName}
-            onChange={(e) => setNewName(e.target.value)}
-            placeholder="Nome do local"
-            className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs focus:outline-none focus:ring-1 focus:ring-emerald-600"
-          />
-
-          <div className="flex gap-1">
-            {(['pharmacy', 'fuel'] as const).map((c) => (
+        <div className="pointer-events-auto order-3 flex w-full gap-1 overflow-x-auto rounded-2xl bg-white/95 p-1 shadow-lg ring-1 ring-black/5 backdrop-blur sm:order-none sm:w-auto">
+          {FILTERS.map((f) => {
+            const active = filter === f.id
+            return (
               <button
-                key={c}
+                key={f.id}
                 type="button"
-                onClick={() => setNewCategory(c)}
-                className={`flex-1 rounded-lg px-2 py-2 text-xs font-semibold ${
-                  newCategory === c
-                    ? 'bg-emerald-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                onClick={() => setFilter(f.id)}
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  active ? 'bg-emerald-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
-                {LABELS[c]}
+                {f.label}
+                <span
+                  className={`rounded-md px-1.5 py-0.5 text-[10px] ${
+                    active ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
+                  }`}
+                >
+                  {counts[f.id]}
+                </span>
               </button>
-            ))}
-          </div>
+            )
+          })}
+        </div>
 
-          <div className="flex gap-2">
+        <div className="pointer-events-auto">{headerRight}</div>
+      </header>
+
+      {/* Botões flutuantes */}
+      {!addMode && (
+        <div className="absolute bottom-32 right-3 z-[1000] flex flex-col items-end gap-2.5">
+          {geoMessage && (
+            <div className="max-w-[230px] rounded-xl bg-white px-3 py-2 text-xs text-red-600 shadow-lg ring-1 ring-black/5">
+              {geoMessage}
+            </div>
+          )}
+
+          {session && (
             <button
               type="button"
-              onClick={cancelAdd}
-              className="flex-1 rounded-lg border border-gray-200 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50"
+              onClick={() => setAddMode(true)}
+              className="flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/30 transition hover:bg-emerald-700 active:scale-95"
             >
-              Cancelar
+              <Plus className="h-4 w-4" strokeWidth={3} />
+              Adicionar local
             </button>
-            <button
-              type="submit"
-              disabled={savingId === 'new'}
-              className="flex-1 rounded-lg bg-emerald-600 py-2 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
-            >
-              {savingId === 'new' ? 'A guardar...' : 'Guardar'}
-            </button>
-          </div>
-        </form>
+          )}
+
+          <button
+            type="button"
+            onClick={locateMe}
+            disabled={locating}
+            className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-slate-50 active:scale-95 disabled:opacity-60"
+          >
+            <LocateFixed className={`h-4 w-4 text-blue-600 ${locating ? 'animate-spin' : ''}`} />
+            {locating ? 'A localizar…' : 'Perto de mim'}
+          </button>
+        </div>
       )}
 
-      {/* Botão Perto de mim */}
-      <div className="absolute bottom-8 right-3 z-[1000] flex flex-col items-end gap-2">
-        {geoMessage && (
-          <div className="max-w-[220px] rounded-lg bg-white px-3 py-2 text-xs text-red-600 shadow-lg">
-            {geoMessage}
+      {/* Legenda (escondida em ecrãs pequenos) */}
+      <div className="absolute bottom-6 left-3 z-[1000] hidden space-y-2 rounded-2xl bg-white/95 px-3.5 py-3 text-xs text-slate-700 shadow-lg ring-1 ring-black/5 backdrop-blur sm:block">
+        <div className="flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full bg-emerald-600" />
+          Farmácia
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full bg-amber-500" />
+          Bomba de combustível
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full bg-blue-600" />A tua posição
+        </div>
+      </div>
+
+      {/* Zona inferior central: erros, instrução e formulário */}
+      <div className="pointer-events-none absolute bottom-6 left-1/2 z-[1000] flex w-[calc(100%-1.5rem)] max-w-sm -translate-x-1/2 flex-col items-center gap-2">
+        {error && (
+          <div className="pointer-events-auto flex w-full items-start justify-between gap-3 rounded-xl bg-red-600 px-3 py-2 text-xs font-medium text-white shadow-lg">
+            <span>{error}</span>
+            <button type="button" onClick={() => setError(null)} className="font-bold underline">
+              Fechar
+            </button>
           </div>
         )}
-        <button
-          type="button"
-          onClick={locateMe}
-          disabled={locating}
-          className="rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-blue-700 disabled:opacity-60"
-        >
-          {locating ? 'A localizar...' : 'Perto de mim'}
-        </button>
+
+        {addMode && !newPos && (
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-slate-900 px-4 py-2.5 text-xs text-white shadow-lg">
+            <MapPin className="h-4 w-4 text-emerald-400" />
+            <span>Toca no mapa onde fica o local</span>
+            <button type="button" onClick={cancelAdd} className="font-semibold text-amber-300 hover:underline">
+              Cancelar
+            </button>
+          </div>
+        )}
+
+        {addMode && newPos && (
+          <form
+            onSubmit={saveNewPlace}
+            className="pointer-events-auto w-full space-y-3 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/5"
+          >
+            <h2 className="text-sm font-bold text-slate-900">Novo local</h2>
+
+            <input
+              type="text"
+              required
+              minLength={2}
+              maxLength={80}
+              value={newName}
+              onChange={(e) => setNewName(e.target.value)}
+              placeholder="Nome do local"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+            />
+
+            <div className="flex gap-2">
+              {(['pharmacy', 'fuel'] as const).map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => setNewCategory(c)}
+                  className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-colors ${
+                    newCategory === c
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                      : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                  }`}
+                >
+                  {c === 'pharmacy' ? (
+                    <Plus className="h-3.5 w-3.5" strokeWidth={3} />
+                  ) : (
+                    <Droplet className="h-3.5 w-3.5" />
+                  )}
+                  {LABELS[c]}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelAdd}
+                className="flex-1 rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                disabled={savingId === 'new'}
+                className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+              >
+                {savingId === 'new' ? 'A guardar...' : 'Guardar'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
 
-      {/* Legenda */}
-      <div className="absolute bottom-6 left-3 z-[1000] space-y-1.5 rounded-xl bg-white px-3 py-2.5 text-xs shadow-lg">
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS.pharmacy }} />
-          <span>Farmácia</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS.fuel }} />
-          <span>Bomba de combustível</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
-          <span>A tua posição</span>
-        </div>
-      </div>
-
-      <MapContainer center={[-8.839, 13.289]} zoom={13} className="h-full w-full">
+      <MapContainer
+        center={[-8.839, 13.289]}
+        zoom={13}
+        zoomControl={false}
+        className="h-full w-full"
+      >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          subdomains="abcd"
+          maxZoom={20}
         />
+        <ZoomControl position="bottomright" />
 
         <FlyToUser position={userPos} />
         <ClickToPlace active={addMode} onPick={setNewPos} />
 
-        {userPos && (
-          <CircleMarker
-            center={userPos}
-            radius={9}
-            pathOptions={{ color: '#ffffff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }}
-          >
-            <Popup>Estás aqui</Popup>
-          </CircleMarker>
-        )}
-
-        {/* Posição escolhida para o novo local */}
-        {newPos && (
-          <CircleMarker
-            center={newPos}
-            radius={10}
-            pathOptions={{ color: '#ffffff', weight: 3, fillColor: '#7c3aed', fillOpacity: 1 }}
-          />
-        )}
+        {userPos && <Marker position={userPos} icon={USER_ICON} />}
+        {newPos && <Marker position={newPos} icon={ICONS.added} />}
 
         {visiblePlaces.map((p) => (
-          <CircleMarker
-            key={p.id}
-            center={[p.lat, p.lng]}
-            radius={7}
-            pathOptions={{
-              color: '#ffffff',
-              weight: 2,
-              fillColor: COLORS[p.category],
-              fillOpacity: 1,
-            }}
-          >
-            <Popup autoPanPaddingTopLeft={[20, 90]}>
-              <div className="min-w-[200px] space-y-1.5">
-                <strong>{p.name}</strong>
-                <div>{LABELS[p.category]}</div>
-                {p.address && <div>{p.address}</div>}
-
-                {/* Estado actual */}
-                <div className="border-t border-gray-200 pt-1.5 text-xs">
-                  {p.current_status && p.status_updated_at ? (
-                    <span>
-                      <strong>{statusLabel(p.current_status, p.category)}</strong> ·{' '}
-                      {timeAgo(p.status_updated_at)}
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">Ainda sem informação de estado</span>
-                  )}
-                </div>
-
-                {/* Média de avaliações */}
-                <div className="text-xs">
-                  {p.review_count ? (
-                    <span>
-                      <strong className="text-amber-500">★ {Number(p.avg_rating).toFixed(1)}</strong>{' '}
-                      ({p.review_count} {p.review_count === 1 ? 'avaliação' : 'avaliações'})
-                    </span>
-                  ) : (
-                    <span className="text-gray-500">Ainda sem avaliações</span>
-                  )}
-                </div>
-
-                {session ? (
-                  <div className="space-y-1.5">
-                    {/* Reportar estado */}
-                    <div>
-                      <div className="text-xs text-gray-500">Como está agora?</div>
-                      <div className="mt-1 flex gap-1">
-                        {STATUS_BUTTONS.map((b) => (
-                          <button
-                            key={b.value}
-                            type="button"
-                            disabled={savingId === p.id}
-                            onClick={() => reportStatus(p.id, b.value)}
-                            className={`flex-1 rounded-md px-1.5 py-1 text-[11px] font-semibold text-white disabled:opacity-60 ${b.className}`}
-                          >
-                            {statusLabel(b.value, p.category)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Avaliar com estrelas */}
-                    <div className="flex items-center gap-0.5">
-                      <span className="mr-1 text-xs text-gray-500">Avaliar:</span>
-                      {[1, 2, 3, 4, 5].map((n) => (
-                        <button
-                          key={n}
-                          type="button"
-                          disabled={savingId === p.id}
-                          onClick={() => rate(p.id, n)}
-                          aria-label={`${n} ${n === 1 ? 'estrela' : 'estrelas'}`}
-                          className="text-xl leading-none text-amber-400 hover:scale-125 disabled:opacity-60"
-                        >
-                          ★
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-xs text-gray-500">Entra para reportar o estado e avaliar.</div>
-                )}
-              </div>
+          <Marker key={p.id} position={[p.lat, p.lng]} icon={ICONS[p.category]}>
+            <Popup autoPanPaddingTopLeft={[20, 130]}>
+              <PlacePopupContent
+                place={p}
+                session={session}
+                saving={savingId === p.id}
+                onStatus={(s) => reportStatus(p.id, s)}
+                onRate={(n) => rate(p.id, n)}
+              />
             </Popup>
-          </CircleMarker>
+          </Marker>
         ))}
       </MapContainer>
     </div>
