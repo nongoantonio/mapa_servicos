@@ -9,4 +9,6 @@ export type Place = {
   lng: number
   current_status: PlaceStatus | null
   status_updated_at: string | null
+  avg_rating: number | null
+  review_count: number | null
 }
