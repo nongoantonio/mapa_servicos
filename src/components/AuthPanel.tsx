@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
-import { LogIn, LogOut } from 'lucide-react'
+import { LogOut, User } from 'lucide-react'
 import { supabase } from '../lib/supabase'
+
+const inputCls =
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20'
 
 export default function AuthPanel() {
   const [session, setSession] = useState<Session | null>(null)
@@ -51,20 +54,20 @@ export default function AuthPanel() {
   if (session) {
     const userEmail = session.user.email ?? ''
     return (
-      <div className="flex items-center gap-2.5 rounded-2xl bg-slate-950 py-1.5 pl-1.5 pr-2 text-white shadow-lg">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-400 text-sm font-bold uppercase text-navy">
+      <div className="flex items-center gap-3">
+        <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-base font-bold uppercase text-white">
           {userEmail.charAt(0) || '?'}
         </div>
-        <div className="min-w-0 leading-tight">
-          <div className="text-[10px] uppercase tracking-wide text-slate-400">Sessão iniciada</div>
-          <div className="max-w-[150px] truncate text-xs font-semibold">{userEmail}</div>
+        <div className="hidden min-w-0 leading-tight sm:block">
+          <div className="max-w-[150px] truncate text-sm font-semibold text-white">{userEmail}</div>
+          <div className="text-[11px] text-slate-400">Sessão iniciada</div>
         </div>
         <button
           type="button"
           title="Sair"
           aria-label="Sair"
           onClick={() => supabase.auth.signOut()}
-          className="rounded-lg p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
+          className="rounded-full p-2 text-slate-300 transition-colors hover:bg-white/10 hover:text-white"
         >
           <LogOut className="h-4 w-4" />
         </button>
@@ -78,16 +81,21 @@ export default function AuthPanel() {
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        className="flex items-center gap-2 rounded-2xl bg-navy px-4 py-3 text-xs font-semibold text-white shadow-lg transition hover:bg-navy-dark active:scale-95"
+        className="flex items-center gap-3 rounded-full text-left transition active:scale-95"
       >
-        <LogIn className="h-4 w-4 text-sky-400" />
-        Entrar
+        <span className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white">
+          <User className="h-5 w-5" />
+        </span>
+        <span className="hidden leading-tight sm:block">
+          <span className="block text-sm font-semibold text-white">Entrar</span>
+          <span className="block text-[11px] text-slate-400">ou registar</span>
+        </span>
       </button>
 
       {open && (
         <form
           onSubmit={handleSubmit}
-          className="absolute right-0 top-14 w-72 space-y-3 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200"
+          className="absolute right-0 top-14 z-[2000] w-72 space-y-3 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200"
         >
           <div>
             <h2 className="text-sm font-bold text-slate-950">
@@ -106,7 +114,7 @@ export default function AuthPanel() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             placeholder="Email"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400/30"
+            className={inputCls}
           />
           <input
             type="password"
@@ -115,7 +123,7 @@ export default function AuthPanel() {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="Palavra-passe (mín. 6)"
-            className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400/30"
+            className={inputCls}
           />
 
           {message && (
@@ -127,7 +135,7 @@ export default function AuthPanel() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-xl bg-navy py-2.5 text-xs font-bold text-white transition hover:bg-navy-dark disabled:opacity-60"
+            className="w-full rounded-xl bg-brand py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-60"
           >
             {loading ? 'A processar...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
           </button>
@@ -138,7 +146,7 @@ export default function AuthPanel() {
               setMode(mode === 'login' ? 'signup' : 'login')
               setMessage(null)
             }}
-            className="w-full text-center text-xs font-medium text-sky-700 hover:underline"
+            className="w-full text-center text-xs font-medium text-brand hover:underline"
           >
             {mode === 'login' ? 'Ainda não tens conta? Criar conta' : 'Já tens conta? Entrar'}
           </button>
