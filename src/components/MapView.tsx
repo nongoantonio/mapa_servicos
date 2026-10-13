@@ -28,22 +28,22 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 const STATUS_ORDER: PlaceStatus[] = ['open', 'closed', 'out_of_stock']
 
-// Aberto = azul claro · Fechado = preto · Sem stock = cinzento
+// Aberto = verde · Fechado = vermelho · Sem stock = âmbar
 const STATUS_STYLES: Record<PlaceStatus, { badge: string; dot: string; button: string }> = {
   open: {
-    badge: 'bg-sky-100 text-sky-800 ring-sky-200',
-    dot: 'bg-sky-500',
-    button: 'border-sky-300 text-sky-800 hover:bg-sky-50',
+    badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
+    dot: 'bg-emerald-500',
+    button: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
   },
   closed: {
-    badge: 'bg-slate-950 text-white ring-slate-950',
-    dot: 'bg-white',
-    button: 'border-slate-900 text-slate-950 hover:bg-slate-100',
+    badge: 'bg-red-50 text-red-700 ring-red-200',
+    dot: 'bg-red-500',
+    button: 'border-red-200 text-red-700 hover:bg-red-50',
   },
   out_of_stock: {
-    badge: 'bg-slate-200 text-slate-700 ring-slate-300',
-    dot: 'bg-slate-500',
-    button: 'border-slate-300 text-slate-600 hover:bg-slate-100',
+    badge: 'bg-amber-50 text-amber-700 ring-amber-200',
+    dot: 'bg-amber-500',
+    button: 'border-amber-200 text-amber-700 hover:bg-amber-50',
   },
 }
 
@@ -133,7 +133,7 @@ function StarRating({ disabled, onRate }: { disabled: boolean; onRate: (n: numbe
         >
           <Star
             className={`h-5 w-5 transition-colors ${
-              n <= hover ? 'fill-sky-400 text-sky-400' : 'text-slate-300'
+              n <= hover ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
             }`}
           />
         </button>
@@ -206,7 +206,7 @@ function PlacePopupContent({
 
       <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-600">
         <Star
-          className={`h-4 w-4 ${place.review_count ? 'fill-sky-400 text-sky-400' : 'text-slate-300'}`}
+          className={`h-4 w-4 ${place.review_count ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
         />
         {place.review_count ? (
           <span>
