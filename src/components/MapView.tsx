@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   MapContainer,
   TileLayer,
@@ -14,6 +14,7 @@ import { Clock, Droplet, LocateFixed, MapPin, Plus, Star } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
 import type { Place, PlaceStatus } from '../types'
+import AuthPanel from './AuthPanel'
 
 const LABELS = { pharmacy: 'Farmácia', fuel: 'Bomba de combustível' } as const
 
@@ -27,21 +28,22 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 const STATUS_ORDER: PlaceStatus[] = ['open', 'closed', 'out_of_stock']
 
+// Aberto = azul claro · Fechado = preto · Sem stock = cinzento
 const STATUS_STYLES: Record<PlaceStatus, { badge: string; dot: string; button: string }> = {
   open: {
-    badge: 'bg-emerald-50 text-emerald-700 ring-emerald-200',
-    dot: 'bg-emerald-500',
-    button: 'border-emerald-200 text-emerald-700 hover:bg-emerald-50',
+    badge: 'bg-sky-100 text-sky-800 ring-sky-200',
+    dot: 'bg-sky-500',
+    button: 'border-sky-300 text-sky-800 hover:bg-sky-50',
   },
   closed: {
-    badge: 'bg-red-50 text-red-700 ring-red-200',
-    dot: 'bg-red-500',
-    button: 'border-red-200 text-red-700 hover:bg-red-50',
+    badge: 'bg-slate-950 text-white ring-slate-950',
+    dot: 'bg-white',
+    button: 'border-slate-900 text-slate-950 hover:bg-slate-100',
   },
   out_of_stock: {
-    badge: 'bg-amber-50 text-amber-700 ring-amber-200',
-    dot: 'bg-amber-500',
-    button: 'border-amber-200 text-amber-700 hover:bg-amber-50',
+    badge: 'bg-slate-200 text-slate-700 ring-slate-300',
+    dot: 'bg-slate-500',
+    button: 'border-slate-300 text-slate-600 hover:bg-slate-100',
   },
 }
 
@@ -62,7 +64,7 @@ function timeAgo(iso: string) {
 
 /* ── Ícones dos marcadores ── */
 const svg = (inner: string) =>
-  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
+  `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
 
 const PLUS = '<path d="M5 12h14"/><path d="M12 5v14"/>'
 const DROP =
@@ -72,9 +74,9 @@ const makePin = (kind: 'pharmacy' | 'fuel' | 'new', inner: string) =>
   divIcon({
     className: '',
     html: `<div class="pin pin-${kind}">${svg(inner)}</div>`,
-    iconSize: [34, 34],
-    iconAnchor: [17, 17],
-    popupAnchor: [0, -18],
+    iconSize: [30, 30],
+    iconAnchor: [15, 15],
+    popupAnchor: [0, -16],
   })
 
 const ICONS = {
@@ -131,7 +133,7 @@ function StarRating({ disabled, onRate }: { disabled: boolean; onRate: (n: numbe
         >
           <Star
             className={`h-5 w-5 transition-colors ${
-              n <= hover ? 'fill-amber-400 text-amber-400' : 'text-slate-300'
+              n <= hover ? 'fill-sky-400 text-sky-400' : 'text-slate-300'
             }`}
           />
         </button>
@@ -160,14 +162,14 @@ function PlacePopupContent({
     <div className="w-[260px] p-4">
       <div className="flex items-start gap-3 pr-5">
         <div
-          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white ${
-            isPharmacy ? 'bg-emerald-600' : 'bg-amber-500'
+          className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+            isPharmacy ? 'bg-navy text-white' : 'bg-sky-400 text-navy'
           }`}
         >
           {isPharmacy ? <Plus className="h-5 w-5" strokeWidth={3} /> : <Droplet className="h-5 w-5" />}
         </div>
         <div className="min-w-0">
-          <h3 className="text-sm font-bold leading-snug text-slate-900">{place.name}</h3>
+          <h3 className="text-sm font-bold leading-snug text-slate-950">{place.name}</h3>
           <div className="text-xs text-slate-500">{LABELS[place.category]}</div>
         </div>
       </div>
@@ -204,11 +206,11 @@ function PlacePopupContent({
 
       <div className="mt-2.5 flex items-center gap-1.5 text-xs text-slate-600">
         <Star
-          className={`h-4 w-4 ${place.review_count ? 'fill-amber-400 text-amber-400' : 'text-slate-300'}`}
+          className={`h-4 w-4 ${place.review_count ? 'fill-sky-400 text-sky-400' : 'text-slate-300'}`}
         />
         {place.review_count ? (
           <span>
-            <strong className="text-slate-900">{Number(place.avg_rating).toFixed(1)}</strong> ·{' '}
+            <strong className="text-slate-950">{Number(place.avg_rating).toFixed(1)}</strong> ·{' '}
             {place.review_count} {place.review_count === 1 ? 'avaliação' : 'avaliações'}
           </span>
         ) : (
@@ -256,7 +258,7 @@ function PlacePopupContent({
 }
 
 /* ── Componente principal ── */
-export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
+export default function MapView() {
   const [places, setPlaces] = useState<Place[]>([])
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
@@ -389,17 +391,17 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
     <div className={`relative h-full w-full ${addMode ? 'adding' : ''}`}>
       {/* Cabeçalho */}
       <header className="pointer-events-none absolute inset-x-0 top-0 z-[1000] flex flex-wrap items-start justify-between gap-2 p-3">
-        <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl bg-white/95 px-3 py-2 shadow-lg ring-1 ring-black/5 backdrop-blur">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-600 text-white">
+        <div className="pointer-events-auto flex items-center gap-2.5 rounded-2xl bg-navy px-3 py-2 text-white shadow-lg">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-sky-400 text-navy">
             <MapPin className="h-5 w-5" />
           </div>
           <div className="leading-tight">
-            <div className="text-sm font-bold text-slate-900">Mapa de Serviços</div>
-            <div className="text-[11px] text-slate-500">Luanda · actualizado pela comunidade</div>
+            <div className="text-sm font-bold">Mapa de Serviços</div>
+            <div className="text-[11px] text-sky-200">Luanda · actualizado pela comunidade</div>
           </div>
         </div>
 
-        <div className="pointer-events-auto order-3 flex w-full gap-1 overflow-x-auto rounded-2xl bg-white/95 p-1 shadow-lg ring-1 ring-black/5 backdrop-blur sm:order-none sm:w-auto">
+        <div className="pointer-events-auto order-3 flex w-full gap-1 overflow-x-auto rounded-2xl bg-white p-1 shadow-lg ring-1 ring-slate-200 sm:order-none sm:w-auto">
           {FILTERS.map((f) => {
             const active = filter === f.id
             return (
@@ -407,14 +409,14 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
                 key={f.id}
                 type="button"
                 onClick={() => setFilter(f.id)}
-                className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-1.5 text-xs font-semibold transition-colors ${
-                  active ? 'bg-emerald-600 text-white shadow' : 'text-slate-600 hover:bg-slate-100'
+                className={`flex items-center gap-1.5 whitespace-nowrap rounded-xl px-3 py-2 text-xs font-semibold transition-colors ${
+                  active ? 'bg-navy text-white' : 'text-slate-600 hover:bg-slate-100'
                 }`}
               >
                 {f.label}
                 <span
                   className={`rounded-md px-1.5 py-0.5 text-[10px] ${
-                    active ? 'bg-white/20' : 'bg-slate-100 text-slate-500'
+                    active ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-500'
                   }`}
                 >
                   {counts[f.id]}
@@ -424,14 +426,16 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
           })}
         </div>
 
-        <div className="pointer-events-auto">{headerRight}</div>
+        <div className="pointer-events-auto">
+          <AuthPanel />
+        </div>
       </header>
 
       {/* Botões flutuantes */}
       {!addMode && (
         <div className="absolute bottom-32 right-3 z-[1000] flex flex-col items-end gap-2.5">
           {geoMessage && (
-            <div className="max-w-[230px] rounded-xl bg-white px-3 py-2 text-xs text-red-600 shadow-lg ring-1 ring-black/5">
+            <div className="max-w-[230px] rounded-xl bg-white px-3 py-2 text-xs text-slate-700 shadow-lg ring-1 ring-slate-200">
               {geoMessage}
             </div>
           )}
@@ -440,9 +444,9 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
             <button
               type="button"
               onClick={() => setAddMode(true)}
-              className="flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/30 transition hover:bg-emerald-700 active:scale-95"
+              className="flex items-center gap-2 rounded-full bg-navy px-4 py-3 text-sm font-semibold text-white shadow-lg transition hover:bg-navy-dark active:scale-95"
             >
-              <Plus className="h-4 w-4" strokeWidth={3} />
+              <Plus className="h-4 w-4 text-sky-400" strokeWidth={3} />
               Adicionar local
             </button>
           )}
@@ -451,45 +455,47 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
             type="button"
             onClick={locateMe}
             disabled={locating}
-            className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-slate-700 shadow-lg ring-1 ring-black/5 transition hover:bg-slate-50 active:scale-95 disabled:opacity-60"
+            className="flex items-center gap-2 rounded-full bg-white px-4 py-3 text-sm font-semibold text-navy shadow-lg ring-1 ring-slate-200 transition hover:bg-slate-50 active:scale-95 disabled:opacity-60"
           >
-            <LocateFixed className={`h-4 w-4 text-blue-600 ${locating ? 'animate-spin' : ''}`} />
+            <LocateFixed className={`h-4 w-4 text-sky-500 ${locating ? 'animate-spin' : ''}`} />
             {locating ? 'A localizar…' : 'Perto de mim'}
           </button>
         </div>
       )}
 
       {/* Legenda (escondida em ecrãs pequenos) */}
-      <div className="absolute bottom-6 left-3 z-[1000] hidden space-y-2 rounded-2xl bg-white/95 px-3.5 py-3 text-xs text-slate-700 shadow-lg ring-1 ring-black/5 backdrop-blur sm:block">
+      <div className="absolute bottom-6 left-3 z-[1000] hidden space-y-2 rounded-2xl bg-white px-3.5 py-3 text-xs text-slate-700 shadow-lg ring-1 ring-slate-200 sm:block">
         <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-emerald-600" />
+          <span className="h-3 w-3 rounded-full bg-navy" />
           Farmácia
         </div>
         <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-amber-500" />
+          <span className="h-3 w-3 rounded-full bg-sky-400" />
           Bomba de combustível
         </div>
         <div className="flex items-center gap-2">
-          <span className="h-3 w-3 rounded-full bg-blue-600" />A tua posição
+          <span className="h-3 w-3 rounded-full bg-slate-950" />A tua posição
         </div>
       </div>
 
       {/* Zona inferior central: erros, instrução e formulário */}
       <div className="pointer-events-none absolute bottom-6 left-1/2 z-[1000] flex w-[calc(100%-1.5rem)] max-w-sm -translate-x-1/2 flex-col items-center gap-2">
         {error && (
-          <div className="pointer-events-auto flex w-full items-start justify-between gap-3 rounded-xl bg-red-600 px-3 py-2 text-xs font-medium text-white shadow-lg">
-            <span>{error}</span>
-            <button type="button" onClick={() => setError(null)} className="font-bold underline">
+          <div className="pointer-events-auto flex w-full items-start justify-between gap-3 rounded-xl bg-slate-950 px-3 py-2 text-xs font-medium text-white shadow-lg">
+            <span>
+              <strong className="text-sky-400">Erro:</strong> {error}
+            </span>
+            <button type="button" onClick={() => setError(null)} className="font-bold text-sky-300 underline">
               Fechar
             </button>
           </div>
         )}
 
         {addMode && !newPos && (
-          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-slate-900 px-4 py-2.5 text-xs text-white shadow-lg">
-            <MapPin className="h-4 w-4 text-emerald-400" />
+          <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-slate-950 px-4 py-2.5 text-xs text-white shadow-lg">
+            <MapPin className="h-4 w-4 text-sky-400" />
             <span>Toca no mapa onde fica o local</span>
-            <button type="button" onClick={cancelAdd} className="font-semibold text-amber-300 hover:underline">
+            <button type="button" onClick={cancelAdd} className="font-semibold text-sky-300 hover:underline">
               Cancelar
             </button>
           </div>
@@ -498,9 +504,9 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
         {addMode && newPos && (
           <form
             onSubmit={saveNewPlace}
-            className="pointer-events-auto w-full space-y-3 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-black/5"
+            className="pointer-events-auto w-full space-y-3 rounded-2xl bg-white p-4 shadow-xl ring-1 ring-slate-200"
           >
-            <h2 className="text-sm font-bold text-slate-900">Novo local</h2>
+            <h2 className="text-sm font-bold text-slate-950">Novo local</h2>
 
             <input
               type="text"
@@ -510,7 +516,7 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Nome do local"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-emerald-500 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400/30"
             />
 
             <div className="flex gap-2">
@@ -521,7 +527,7 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
                   onClick={() => setNewCategory(c)}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-colors ${
                     newCategory === c
-                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
+                      ? 'border-navy bg-sky-50 text-navy'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -546,7 +552,7 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
               <button
                 type="submit"
                 disabled={savingId === 'new'}
-                className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
+                className="flex-1 rounded-xl bg-navy py-2.5 text-xs font-bold text-white transition hover:bg-navy-dark disabled:opacity-60"
               >
                 {savingId === 'new' ? 'A guardar...' : 'Guardar'}
               </button>
@@ -562,10 +568,8 @@ export default function MapView({ headerRight }: { headerRight?: ReactNode }) {
         className="h-full w-full"
       >
         <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
-          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
-          subdomains="abcd"
-          maxZoom={20}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <ZoomControl position="bottomright" />
 

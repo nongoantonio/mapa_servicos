@@ -2,6 +2,8 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --color-navy: #0b2545;
+  --color-navy-dark: #061a33;
 }
 
 html,
@@ -16,38 +18,42 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* ── Mapa em tons de cinzento ── */
+.leaflet-tile-pane {
+  filter: grayscale(1) contrast(0.92) brightness(1.04);
+}
+
 /* ── Marcadores ── */
 .pin {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 30px;
+  height: 30px;
   border-radius: 9999px;
   border: 3px solid #fff;
-  color: #fff;
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.3);
+  box-shadow: 0 3px 8px rgba(2, 6, 23, 0.35);
   transition: transform 0.15s;
 }
 .pin:hover {
   transform: scale(1.15);
 }
-.pin-pharmacy { background: #059669; }
-.pin-fuel { background: #f59e0b; }
-.pin-new { background: #7c3aed; }
+.pin-pharmacy { background: #0b2545; color: #fff; }
+.pin-fuel { background: #38bdf8; color: #0b2545; }
+.pin-new { background: #64748b; color: #fff; }
 
 .user-dot {
   width: 18px;
   height: 18px;
   border-radius: 9999px;
-  background: #2563eb;
+  background: #020617;
   border: 3px solid #fff;
   animation: pulse-ring 1.8s infinite;
 }
 @keyframes pulse-ring {
-  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.5); }
-  70% { box-shadow: 0 0 0 16px rgba(37, 99, 235, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+  70% { box-shadow: 0 0 0 16px rgba(56, 189, 248, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
 }
 
 /* ── Leaflet: balões e controlos ── */
@@ -55,7 +61,7 @@ body {
 .leaflet-popup-content-wrapper {
   border-radius: 1rem;
   padding: 0;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.2);
+  box-shadow: 0 12px 32px rgba(2, 6, 23, 0.25);
 }
 .leaflet-popup-content { margin: 0; width: auto !important; }
 .leaflet-popup-content p { margin: 0; }
@@ -65,15 +71,15 @@ body {
   border: none !important;
   border-radius: 0.75rem;
   overflow: hidden;
-  box-shadow: 0 4px 14px rgba(15, 23, 42, 0.15) !important;
+  box-shadow: 0 4px 14px rgba(2, 6, 23, 0.2) !important;
 }
 .leaflet-control-zoom a {
   width: 36px !important;
   height: 36px !important;
   line-height: 36px !important;
-  color: #334155 !important;
+  color: #0b2545 !important;
 }
 .leaflet-control-attribution { font-size: 10px; }
 
-/* Cursor em cruz ao escolher posição de um novo local */
+/* Cursor em cruz ao escolher a posição de um novo local */
 .adding .leaflet-grab { cursor: crosshair !important; }
