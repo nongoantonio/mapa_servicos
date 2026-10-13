@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, TileLayer, CircleMarker, Popup } from 'react-leaflet'
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from 'react-leaflet'
 import type { Session } from '@supabase/supabase-js'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
@@ -37,12 +37,24 @@ const STATUS_BUTTONS: { value: PlaceStatus; className: string }[] = [
   { value: 'out_of_stock', className: 'bg-amber-500 hover:bg-amber-600' },
 ]
 
+// Move o mapa para a posição do utilizador sempre que ela muda
+function FlyToUser({ position }: { position: [number, number] | null }) {
+  const map = useMap()
+  useEffect(() => {
+    if (position) map.flyTo(position, 15, { duration: 1.2 })
+  }, [position, map])
+  return null
+}
+
 export default function MapView() {
   const [places, setPlaces] = useState<Place[]>([])
   const [error, setError] = useState<string | null>(null)
   const [filter, setFilter] = useState<Filter>('all')
   const [session, setSession] = useState<Session | null>(null)
   const [savingId, setSavingId] = useState<string | null>(null)
+  const [userPos, setUserPos] = useState<[number, number] | null>(null)
+  const [locating, setLocating] = useState(false)
+  const [geoMessage, setGeoMessage] = useState<string | null>(null)
 
   const loadPlaces = useCallback(async () => {
     const { data, error } = await supabase.from('places_with_status').select('*')
@@ -76,6 +88,26 @@ export default function MapView() {
     }
   }
 
+  function locateMe() {
+    if (!navigator.geolocation) {
+      setGeoMessage('O teu browser não suporta localização.')
+      return
+    }
+    setLocating(true)
+    setGeoMessage(null)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPos([pos.coords.latitude, pos.coords.longitude])
+        setLocating(false)
+      },
+      () => {
+        setGeoMessage('Não foi possível obter a tua localização. Verifica a permissão do browser.')
+        setLocating(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    )
+  }
+
   const visiblePlaces = useMemo(
     () => (filter === 'all' ? places : places.filter((p) => p.category === filter)),
     [places, filter]
@@ -104,6 +136,23 @@ export default function MapView() {
         {error ? 'Erro: ' + error : `${visiblePlaces.length} locais`}
       </div>
 
+      {/* Botão Perto de mim */}
+      <div className="absolute bottom-8 right-3 z-[1000] flex flex-col items-end gap-2">
+        {geoMessage && (
+          <div className="max-w-[220px] rounded-lg bg-white px-3 py-2 text-xs text-red-600 shadow-lg">
+            {geoMessage}
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={locateMe}
+          disabled={locating}
+          className="rounded-full bg-blue-600 px-4 py-2 text-xs font-bold text-white shadow-lg hover:bg-blue-700 disabled:opacity-60"
+        >
+          {locating ? 'A localizar...' : 'Perto de mim'}
+        </button>
+      </div>
+
       {/* Legenda */}
       <div className="absolute bottom-6 left-3 z-[1000] space-y-1.5 rounded-xl bg-white px-3 py-2.5 text-xs shadow-lg">
         <div className="flex items-center gap-2">
@@ -114,6 +163,10 @@ export default function MapView() {
           <span className="h-3 w-3 rounded-full" style={{ backgroundColor: COLORS.fuel }} />
           <span>Bomba de combustível</span>
         </div>
+        <div className="flex items-center gap-2">
+          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: '#2563eb' }} />
+          <span>A tua posição</span>
+        </div>
       </div>
 
       <MapContainer center={[-8.839, 13.289]} zoom={13} className="h-full w-full">
@@ -121,6 +174,18 @@ export default function MapView() {
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
+
+        <FlyToUser position={userPos} />
+
+        {userPos && (
+          <CircleMarker
+            center={userPos}
+            radius={9}
+            pathOptions={{ color: '#ffffff', weight: 3, fillColor: '#2563eb', fillOpacity: 1 }}
+          >
+            <Popup>Estás aqui</Popup>
+          </CircleMarker>
+        )}
 
         {visiblePlaces.map((p) => (
           <CircleMarker
