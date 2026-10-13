@@ -134,7 +134,7 @@ export default function MapView() {
               fillOpacity: 1,
             }}
           >
-            <Popup>
+            <Popup autoPanPaddingTopLeft={[20, 90]}>
               <div className="min-w-[190px] space-y-1.5">
                 <strong>{p.name}</strong>
                 <div>{LABELS[p.category]}</div>
