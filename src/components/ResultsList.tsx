@@ -28,6 +28,7 @@ export default function ResultsList({
   category,
   userPos,
   locating,
+  locationError,
   onLocate,
   onBack,
   onShowMap,
@@ -36,6 +37,7 @@ export default function ResultsList({
   category: Place['category']
   userPos: [number, number] | null
   locating: boolean
+  locationError: string | null
   onLocate: () => void
   onBack: () => void
   onShowMap: (placeId: string | null) => void
@@ -52,14 +54,65 @@ export default function ResultsList({
         place,
         km: userPos ? distanceKm(userPos, [place.lat, place.lng]) : null,
       }))
-    list.sort((a, b) =>
-      a.km !== null && b.km !== null ? a.km - b.km : a.place.name.localeCompare(b.place.name)
-    )
+    list.sort((a, b) => (a.km ?? 0) - (b.km ?? 0))
     return list
   }, [places, category, userPos])
 
   const filtered = onlyOpen ? sorted.filter((x) => x.place.current_status === 'open') : sorted
   const shown = filtered.slice(0, limit)
+
+  // Sem localização não mostramos a lista: só faz sentido ordenada por distância
+  if (!userPos) {
+    return (
+      <div className="flex min-h-screen w-screen flex-col bg-gradient-to-b from-ink to-ink-soft px-5 py-6 text-white">
+        <div className="mx-auto w-full max-w-md">
+          <button
+            type="button"
+            onClick={onBack}
+            className="flex items-center gap-2 rounded-full bg-white/10 py-2 pl-3 pr-4 text-sm font-medium transition hover:bg-white/20"
+          >
+            <ArrowLeft className="h-4 w-4" />
+            Voltar
+          </button>
+        </div>
+
+        <div className="mx-auto flex w-full max-w-md flex-1 flex-col items-center justify-center text-center">
+          <div className="flex h-20 w-20 items-center justify-center rounded-full bg-brand shadow-lg shadow-brand/40">
+            <LocateFixed className="h-10 w-10 text-white" />
+          </div>
+          <h1 className="mt-6 text-2xl font-bold">Precisamos da tua localização</h1>
+          <p className="mt-3 text-base text-slate-300">
+            Para te mostrar {category === 'pharmacy' ? 'as farmácias' : 'as bombas'} mais perto, a app
+            precisa de saber onde estás.
+          </p>
+
+          {locationError && (
+            <div className="mt-5 w-full rounded-2xl bg-amber-50 p-4 text-left text-sm text-amber-900 ring-1 ring-amber-200">
+              {locationError}
+            </div>
+          )}
+
+          <button
+            type="button"
+            onClick={onLocate}
+            disabled={locating}
+            className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-brand py-4 text-base font-semibold text-white shadow-lg transition active:scale-[0.98] disabled:opacity-70"
+          >
+            {locating ? <Loader2 className="h-5 w-5 animate-spin" /> : <LocateFixed className="h-5 w-5" />}
+            {locating ? 'A procurar a tua localização...' : 'Ativar localização'}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => onShowMap(null)}
+            className="mt-5 text-sm font-medium text-sky-300 underline-offset-4 hover:underline"
+          >
+            Prefiro ver tudo no mapa
+          </button>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex h-screen w-screen flex-col bg-slate-100">
@@ -75,37 +128,15 @@ export default function ResultsList({
             Voltar
           </button>
           <h1 className="mt-4 text-2xl font-bold">
-            {title}
-            {userPos ? ' perto de ti' : ''}
+            {title} perto de ti
           </h1>
-          <p className="mt-1 text-sm text-slate-300">
-            {userPos
-              ? 'Da mais próxima para a mais distante'
-              : 'Ativa a localização para ver as mais próximas'}
-          </p>
+          <p className="mt-1 text-sm text-slate-300">Da mais próxima para a mais distante</p>
         </div>
       </header>
 
       {/* Lista */}
       <div className="flex-1 overflow-y-auto">
         <div className="mx-auto max-w-2xl space-y-3 p-4 pb-28">
-          {!userPos && (
-            <div className="flex items-center gap-3 rounded-2xl bg-amber-50 p-4 ring-1 ring-amber-200">
-              <div className="min-w-0 flex-1 text-sm text-amber-900">
-                Não sabemos onde estás, por isso a lista está por ordem alfabética.
-              </div>
-              <button
-                type="button"
-                onClick={onLocate}
-                disabled={locating}
-                className="flex shrink-0 items-center gap-2 rounded-full bg-amber-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-              >
-                {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
-                Ativar localização
-              </button>
-            </div>
-          )}
-
           {/* Só abertas */}
           <button
             type="button"

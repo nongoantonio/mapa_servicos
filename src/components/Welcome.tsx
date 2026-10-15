@@ -19,10 +19,12 @@ const OPTIONS = [
 
 export default function Welcome({
   loading,
+  error,
   onChoose,
   onSkip,
 }: {
   loading: boolean
+  error: string | null
   onChoose: (choice: Filter) => void
   onSkip: () => void
 }) {
@@ -79,6 +81,13 @@ export default function Welcome({
             )
           })}
         </div>
+
+        {error && (
+          <div className="mt-6 rounded-2xl bg-amber-50 p-4 text-left text-sm text-amber-900 ring-1 ring-amber-200">
+            <div className="font-semibold">Ainda não conseguimos a tua localização</div>
+            <div className="mt-1">{error}</div>
+          </div>
+        )}
 
         <p className="mt-6 text-xs leading-relaxed text-slate-400">
           Vamos pedir a tua localização para mostrar o que está mais perto. A tua posição só é usada no

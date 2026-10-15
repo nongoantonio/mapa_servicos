@@ -20,6 +20,7 @@ export default function App() {
   const [saving, setSaving] = useState(false)
   const [view, setView] = useState<'welcome' | 'list' | 'map'>('welcome')
   const [locating, setLocating] = useState(false)
+  const [locationError, setLocationError] = useState<string | null>(null)
 
   const loadPlaces = useCallback(async () => {
     const { data, error } = await supabase.from('places_with_status').select('*')
@@ -108,30 +109,46 @@ export default function App() {
     }
   }
 
-  // Pede a localização ao browser (usado no ecrã inicial, na lista e no mapa)
-  function locate(onDone?: () => void) {
+  // Pede a localização ao browser. O resultado diz se correu bem (ok = true).
+  function locate(onDone?: (ok: boolean) => void) {
     if (!navigator.geolocation) {
-      onDone?.()
+      setLocationError('Este browser não permite obter a localização.')
+      onDone?.(false)
       return
     }
     setLocating(true)
+    setLocationError(null)
     navigator.geolocation.getCurrentPosition(
       (pos) => {
         setUserPos([pos.coords.latitude, pos.coords.longitude])
         setLocating(false)
-        onDone?.()
+        onDone?.(true)
       },
-      () => {
+      (err) => {
         setLocating(false)
-        onDone?.()
+        if (err.code === err.PERMISSION_DENIED) {
+          setLocationError(
+            'O acesso à localização está bloqueado. Clica no cadeado ao lado do endereço do site, permite a localização e tenta outra vez.'
+          )
+        } else if (err.code === err.POSITION_UNAVAILABLE) {
+          setLocationError(
+            'Não conseguimos detetar a tua posição. Verifica se o GPS ou a internet estão ligados e tenta outra vez.'
+          )
+        } else {
+          setLocationError('Demorou demasiado a obter a tua localização. Tenta outra vez.')
+        }
+        onDone?.(false)
       },
-      { enableHighAccuracy: true, timeout: 8000 }
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
     )
   }
 
+  // Só avança para a lista depois de conseguir a localização
   function start(choice: Filter) {
     setFilter(choice)
-    locate(() => setView('list'))
+    locate((ok) => {
+      if (ok) setView('list')
+    })
   }
 
   function showMap(placeId: string | null) {
@@ -143,6 +160,7 @@ export default function App() {
     return (
       <Welcome
         loading={locating}
+        error={locationError}
         onChoose={start}
         onSkip={() => {
           setFilter('all')
@@ -159,6 +177,7 @@ export default function App() {
         category={filter === 'fuel' ? 'fuel' : 'pharmacy'}
         userPos={userPos}
         locating={locating}
+        locationError={locationError}
         onLocate={() => locate()}
         onBack={() => setView('welcome')}
         onShowMap={showMap}
