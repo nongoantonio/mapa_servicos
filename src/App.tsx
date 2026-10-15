@@ -6,6 +6,7 @@ import Header, { type Filter } from './components/Header'
 import Sidebar from './components/Sidebar'
 import MapArea from './components/MapArea'
 import DetailPanel from './components/DetailPanel'
+import Welcome from './components/Welcome'
 
 export default function App() {
   const [places, setPlaces] = useState<Place[]>([])
@@ -16,6 +17,8 @@ export default function App() {
   const [userPos, setUserPos] = useState<[number, number] | null>(null)
   const [reports, setReports] = useState<StatusReport[]>([])
   const [saving, setSaving] = useState(false)
+  const [started, setStarted] = useState(false)
+  const [locating, setLocating] = useState(false)
 
   const loadPlaces = useCallback(async () => {
     const { data, error } = await supabase.from('places_with_status').select('*')
@@ -102,6 +105,38 @@ export default function App() {
       setError(null)
       await loadPlaces()
     }
+  }
+
+  // Ecrã inicial: escolhe o que procura e pede a localização
+  function start(choice: Filter) {
+    setFilter(choice)
+    if (!navigator.geolocation) {
+      setStarted(true)
+      return
+    }
+    setLocating(true)
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setUserPos([pos.coords.latitude, pos.coords.longitude])
+        setLocating(false)
+        setStarted(true)
+      },
+      () => {
+        setError('Não foi possível obter a tua localização. Podes pesquisar pelo nome ou usar o botão de localização no mapa.')
+        setLocating(false)
+        setStarted(true)
+      },
+      { enableHighAccuracy: true, timeout: 8000 }
+    )
+  }
+
+  function skip() {
+    setFilter('all')
+    setStarted(true)
+  }
+
+  if (!started) {
+    return <Welcome loading={locating} onChoose={start} onSkip={skip} />
   }
 
   return (
