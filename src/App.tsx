@@ -7,6 +7,7 @@ import Sidebar from './components/Sidebar'
 import MapArea from './components/MapArea'
 import DetailPanel from './components/DetailPanel'
 import Welcome from './components/Welcome'
+import ResultsList from './components/ResultsList'
 
 export default function App() {
   const [places, setPlaces] = useState<Place[]>([])
@@ -17,7 +18,7 @@ export default function App() {
   const [userPos, setUserPos] = useState<[number, number] | null>(null)
   const [reports, setReports] = useState<StatusReport[]>([])
   const [saving, setSaving] = useState(false)
-  const [started, setStarted] = useState(false)
+  const [view, setView] = useState<'welcome' | 'list' | 'map'>('welcome')
   const [locating, setLocating] = useState(false)
 
   const loadPlaces = useCallback(async () => {
@@ -107,11 +108,10 @@ export default function App() {
     }
   }
 
-  // Ecrã inicial: escolhe o que procura e pede a localização
-  function start(choice: Filter) {
-    setFilter(choice)
+  // Pede a localização ao browser (usado no ecrã inicial, na lista e no mapa)
+  function locate(onDone?: () => void) {
     if (!navigator.geolocation) {
-      setStarted(true)
+      onDone?.()
       return
     }
     setLocating(true)
@@ -119,29 +119,62 @@ export default function App() {
       (pos) => {
         setUserPos([pos.coords.latitude, pos.coords.longitude])
         setLocating(false)
-        setStarted(true)
+        onDone?.()
       },
       () => {
-        setError('Não foi possível obter a tua localização. Podes pesquisar pelo nome ou usar o botão de localização no mapa.')
         setLocating(false)
-        setStarted(true)
+        onDone?.()
       },
       { enableHighAccuracy: true, timeout: 8000 }
     )
   }
 
-  function skip() {
-    setFilter('all')
-    setStarted(true)
+  function start(choice: Filter) {
+    setFilter(choice)
+    locate(() => setView('list'))
   }
 
-  if (!started) {
-    return <Welcome loading={locating} onChoose={start} onSkip={skip} />
+  function showMap(placeId: string | null) {
+    setSelectedId(placeId)
+    setView('map')
+  }
+
+  if (view === 'welcome') {
+    return (
+      <Welcome
+        loading={locating}
+        onChoose={start}
+        onSkip={() => {
+          setFilter('all')
+          showMap(null)
+        }}
+      />
+    )
+  }
+
+  if (view === 'list') {
+    return (
+      <ResultsList
+        places={places}
+        category={filter === 'fuel' ? 'fuel' : 'pharmacy'}
+        userPos={userPos}
+        locating={locating}
+        onLocate={() => locate()}
+        onBack={() => setView('welcome')}
+        onShowMap={showMap}
+      />
+    )
   }
 
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-ink">
-      <Header places={places} filter={filter} onFilter={setFilter} onPick={setSelectedId} />
+      <Header
+        places={places}
+        filter={filter}
+        onFilter={setFilter}
+        onPick={setSelectedId}
+        onHome={() => setView('welcome')}
+      />
 
       <div className="flex min-h-0 flex-1">
         <Sidebar filter={filter} onFilter={setFilter} counts={counts} />

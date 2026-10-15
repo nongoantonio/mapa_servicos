@@ -17,11 +17,13 @@ export default function Header({
   filter,
   onFilter,
   onPick,
+  onHome,
 }: {
   places: Place[]
   filter: Filter
   onFilter: (f: Filter) => void
   onPick: (id: string) => void
+  onHome: () => void
 }) {
   const [query, setQuery] = useState('')
   const [focused, setFocused] = useState(false)
@@ -38,7 +40,12 @@ export default function Header({
     <header className="relative z-[1200] bg-ink text-white">
       <div className="flex h-20 items-center gap-3 px-4 lg:gap-6 lg:px-6">
         {/* Marca */}
-        <div className="flex shrink-0 items-center gap-3 lg:w-[250px]">
+        <button
+          type="button"
+          onClick={onHome}
+          title="Voltar ao início"
+          className="flex shrink-0 items-center gap-3 text-left lg:w-[250px]"
+        >
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-brand shadow-lg shadow-brand/40">
             <MapPin className="h-6 w-6 text-white" />
           </div>
@@ -46,7 +53,7 @@ export default function Header({
             <div className="text-xl font-bold">Mapa de Serviços</div>
             <div className="text-xs text-slate-400">Luanda, Angola</div>
           </div>
-        </div>
+        </button>
 
         {/* Pesquisa */}
         <div className="relative min-w-0 max-w-2xl flex-1">

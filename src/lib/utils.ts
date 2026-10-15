@@ -46,6 +46,12 @@ export function distanceKm(a: [number, number], b: [number, number]) {
   return 2 * R * Math.asin(Math.sqrt(h))
 }
 
+/** "850 m" ou "1,2 km" */
+export function formatDistance(km: number) {
+  if (km < 1) return `${Math.max(10, Math.round((km * 1000) / 10) * 10)} m`
+  return `${km.toFixed(1).replace('.', ',')} km`
+}
+
 /** Minúsculas e sem acentos, para pesquisar "farmacia" e encontrar "Farmácia" */
 export function normalize(text: string) {
   return text
