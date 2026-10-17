@@ -3,11 +3,12 @@ import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import type { Place, PlaceStatus, StatusReport } from './types'
 import Header, { type Filter } from './components/Header'
-import Sidebar from './components/Sidebar'
+import BottomNav, { type Tab } from './components/BottomNav'
 import MapArea from './components/MapArea'
-import DetailPanel from './components/DetailPanel'
-import Welcome from './components/Welcome'
+import PlaceCard from './components/PlaceCard'
+import DetailScreen from './components/DetailScreen'
 import ResultsList from './components/ResultsList'
+import AboutView from './components/AboutView'
 
 export default function App() {
   const [places, setPlaces] = useState<Place[]>([])
@@ -15,10 +16,12 @@ export default function App() {
   const [filter, setFilter] = useState<Filter>('all')
   const [session, setSession] = useState<Session | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [detailOpen, setDetailOpen] = useState(false)
+  const [tab, setTab] = useState<Tab>('map')
+  const [listCategory, setListCategory] = useState<Place['category']>('pharmacy')
   const [userPos, setUserPos] = useState<[number, number] | null>(null)
   const [reports, setReports] = useState<StatusReport[]>([])
   const [saving, setSaving] = useState(false)
-  const [view, setView] = useState<'welcome' | 'list' | 'map'>('welcome')
   const [locating, setLocating] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
   const [onlyOpen, setOnlyOpen] = useState(false)
@@ -73,64 +76,6 @@ export default function App() {
     else setReports([])
   }, [selectedId, loadReports])
 
-  const counts = useMemo(
-    () => ({
-      all: places.length,
-      pharmacy: places.filter((p) => p.category === 'pharmacy').length,
-      fuel: places.filter((p) => p.category === 'fuel').length,
-    }),
-    [places]
-  )
-
-  const visiblePlaces = useMemo(
-    () =>
-      places.filter(
-        (p) =>
-          (filter === 'all' || p.category === filter) && (!onlyOpen || p.current_status === 'open')
-      ),
-    [places, filter, onlyOpen]
-  )
-
-  const selectedPlace = useMemo(
-    () => places.find((p) => p.id === selectedId),
-    [places, selectedId]
-  )
-
-  async function reportStatus(status: PlaceStatus) {
-    if (!session || !selectedId) return
-    setSaving(true)
-    const { error } = await supabase
-      .from('status_reports')
-      .insert({ place_id: selectedId, user_id: session.user.id, status })
-    setSaving(false)
-
-    if (error) {
-      setError(error.message)
-    } else {
-      setError(null)
-      await Promise.all([loadPlaces(), loadReports(selectedId)])
-    }
-  }
-
-  async function rate(rating: number) {
-    if (!session || !selectedId) return
-    setSaving(true)
-    const { error } = await supabase
-      .from('reviews')
-      .upsert(
-        { place_id: selectedId, user_id: session.user.id, rating },
-        { onConflict: 'place_id,user_id' }
-      )
-    setSaving(false)
-
-    if (error) {
-      setError(error.message)
-    } else {
-      setError(null)
-      await loadPlaces()
-    }
-  }
-
   // Pede a localização ao browser. O resultado diz se correu bem (ok = true).
   function locate(onDone?: (ok: boolean) => void) {
     if (!navigator.geolocation) {
@@ -165,89 +110,145 @@ export default function App() {
     )
   }
 
-  // Só avança para a lista depois de conseguir a localização
-  function start(choice: Filter) {
-    setFilter(choice)
-    locate((ok) => {
-      if (ok) setView('list')
-    })
+  // Ao abrir a app, pede a localização para mostrar o que está mais perto
+  useEffect(() => {
+    locate()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const visiblePlaces = useMemo(
+    () =>
+      places.filter(
+        (p) =>
+          (filter === 'all' || p.category === filter) && (!onlyOpen || p.current_status === 'open')
+      ),
+    [places, filter, onlyOpen]
+  )
+
+  const selectedPlace = useMemo(
+    () => places.find((p) => p.id === selectedId),
+    [places, selectedId]
+  )
+
+  // Escolher um local (pelo mapa, pela pesquisa ou pela lista) leva sempre ao mapa
+  function pickPlace(id: string) {
+    setSelectedId(id)
+    setDetailOpen(false)
+    setTab('map')
   }
 
-  function showMap(placeId: string | null) {
-    setSelectedId(placeId)
-    setView('map')
+  function closeCard() {
+    setSelectedId(null)
+    setDetailOpen(false)
   }
 
-  if (view === 'welcome') {
-    return (
-      <Welcome
-        loading={locating}
-        error={locationError}
-        onChoose={start}
-        onSkip={() => {
-          setFilter('all')
-          showMap(null)
-        }}
-      />
-    )
+  async function reportStatus(status: PlaceStatus): Promise<boolean> {
+    if (!session || !selectedId) return false
+    setSaving(true)
+    const { error } = await supabase
+      .from('status_reports')
+      .insert({ place_id: selectedId, user_id: session.user.id, status })
+    setSaving(false)
+
+    if (error) {
+      setError(error.message)
+      return false
+    }
+    setError(null)
+    await Promise.all([loadPlaces(), loadReports(selectedId)])
+    return true
   }
 
-  if (view === 'list') {
-    return (
-      <ResultsList
-        places={places}
-        category={filter === 'fuel' ? 'fuel' : 'pharmacy'}
-        userPos={userPos}
-        locating={locating}
-        locationError={locationError}
-        onLocate={() => locate()}
-        onBack={() => setView('welcome')}
-        onShowMap={showMap}
-      />
-    )
+  async function rate(rating: number): Promise<boolean> {
+    if (!session || !selectedId) return false
+    setSaving(true)
+    const { error } = await supabase
+      .from('reviews')
+      .upsert(
+        { place_id: selectedId, user_id: session.user.id, rating },
+        { onConflict: 'place_id,user_id' }
+      )
+    setSaving(false)
+
+    if (error) {
+      setError(error.message)
+      return false
+    }
+    setError(null)
+    await loadPlaces()
+    return true
   }
 
   return (
-    <div className="flex h-screen w-screen flex-col overflow-hidden bg-ink">
+    <div className="flex h-dvh w-screen flex-col overflow-hidden bg-ink">
       <Header
         places={places}
         filter={filter}
         onFilter={setFilter}
-        onPick={setSelectedId}
-        onHome={() => setView('welcome')}
+        onPick={pickPlace}
+        tab={tab}
+        onTab={setTab}
       />
 
-      <div className="flex min-h-0 flex-1">
-        <Sidebar filter={filter} onFilter={setFilter} counts={counts} />
-
-        <main className="relative min-w-0 flex-1">
-          <MapArea
-            places={visiblePlaces}
-            selectedPlace={selectedPlace}
-            onSelect={setSelectedId}
-            session={session}
-            onReload={loadPlaces}
-            userPos={userPos}
-            onUserPos={setUserPos}
-            error={error}
-            onError={setError}
-            onlyOpen={onlyOpen}
-            onToggleOpen={() => setOnlyOpen((v) => !v)}
-            live={live}
-          />
-        </main>
-
-        <DetailPanel
-          place={selectedPlace}
-          reports={reports}
+      <main className="relative min-h-0 flex-1 bg-slate-100">
+        <MapArea
+          places={visiblePlaces}
+          selectedPlace={selectedPlace}
+          onSelect={(id) => {
+            setSelectedId(id)
+            setTab('map')
+          }}
           session={session}
+          onReload={loadPlaces}
           userPos={userPos}
-          saving={saving}
-          onClose={() => setSelectedId(null)}
-          onStatus={reportStatus}
-          onRate={rate}
+          onUserPos={setUserPos}
+          error={error}
+          onError={setError}
+          onlyOpen={onlyOpen}
+          onToggleOpen={() => setOnlyOpen((v) => !v)}
+          live={live}
+          cardOpen={!!selectedPlace && !detailOpen}
         />
-      </div>
+
+        {selectedPlace && !detailOpen && (
+          <PlaceCard
+            place={selectedPlace}
+            userPos={userPos}
+            onClose={closeCard}
+            onDetails={() => setDetailOpen(true)}
+          />
+        )}
+
+        {selectedPlace && detailOpen && (
+          <DetailScreen
+            place={selectedPlace}
+            reports={reports}
+            session={session}
+            userPos={userPos}
+            saving={saving}
+            onClose={() => setDetailOpen(false)}
+            onStatus={reportStatus}
+            onRate={rate}
+          />
+        )}
+
+        {tab === 'list' && (
+          <ResultsList
+            places={places}
+            category={listCategory}
+            onCategory={setListCategory}
+            userPos={userPos}
+            locating={locating}
+            locationError={locationError}
+            onLocate={() => locate()}
+            onShowMap={pickPlace}
+          />
+        )}
+
+        {tab === 'about' && <AboutView />}
+      </main>
+
+      <BottomNav tab={tab} onTab={setTab} />
     </div>
   )
 }
