@@ -21,6 +21,8 @@ export default function App() {
   const [view, setView] = useState<'welcome' | 'list' | 'map'>('welcome')
   const [locating, setLocating] = useState(false)
   const [locationError, setLocationError] = useState<string | null>(null)
+  const [onlyOpen, setOnlyOpen] = useState(false)
+  const [live, setLive] = useState(false)
 
   const loadPlaces = useCallback(async () => {
     const { data, error } = await supabase.from('places_with_status').select('*')
@@ -49,6 +51,22 @@ export default function App() {
     return () => sub.subscription.unsubscribe()
   }, [])
 
+  // Atualização em tempo real: quando alguém reporta ou avalia, o mapa actualiza sozinho
+  useEffect(() => {
+    const channel = supabase
+      .channel('mapa-ao-vivo')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'status_reports' }, () => {
+        loadPlaces()
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'reviews' }, () => {
+        loadPlaces()
+      })
+      .subscribe((status) => setLive(status === 'SUBSCRIBED'))
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [loadPlaces])
+
   // Sempre que o local seleccionado muda, vai buscar os últimos reportes
   useEffect(() => {
     if (selectedId) loadReports(selectedId)
@@ -65,8 +83,12 @@ export default function App() {
   )
 
   const visiblePlaces = useMemo(
-    () => (filter === 'all' ? places : places.filter((p) => p.category === filter)),
-    [places, filter]
+    () =>
+      places.filter(
+        (p) =>
+          (filter === 'all' || p.category === filter) && (!onlyOpen || p.current_status === 'open')
+      ),
+    [places, filter, onlyOpen]
   )
 
   const selectedPlace = useMemo(
@@ -209,6 +231,9 @@ export default function App() {
             onUserPos={setUserPos}
             error={error}
             onError={setError}
+            onlyOpen={onlyOpen}
+            onToggleOpen={() => setOnlyOpen((v) => !v)}
+            live={live}
           />
         </main>
 

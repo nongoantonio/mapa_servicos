@@ -10,7 +10,7 @@ import {
 } from 'react-leaflet'
 import { divIcon } from 'leaflet'
 import type { Session } from '@supabase/supabase-js'
-import { Clock, Droplet, LocateFixed, MapPin, Plus, Star } from 'lucide-react'
+import { Clock, Fuel, LocateFixed, MapPin, Plus, Star } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import { supabase } from '../lib/supabase'
 import type { Place, PlaceStatus } from '../types'
@@ -166,7 +166,7 @@ function PlacePopupContent({
             isPharmacy ? 'bg-navy text-white' : 'bg-sky-400 text-navy'
           }`}
         >
-          {isPharmacy ? <Plus className="h-5 w-5" strokeWidth={3} /> : <Droplet className="h-5 w-5" />}
+          {isPharmacy ? <Plus className="h-5 w-5" strokeWidth={3} /> : <Fuel className="h-5 w-5" />}
         </div>
         <div className="min-w-0">
           <h3 className="text-sm font-bold leading-snug text-slate-950">{place.name}</h3>
@@ -534,7 +534,7 @@ export default function MapView() {
                   {c === 'pharmacy' ? (
                     <Plus className="h-3.5 w-3.5" strokeWidth={3} />
                   ) : (
-                    <Droplet className="h-3.5 w-3.5" />
+                    <Fuel className="h-3.5 w-3.5" />
                   )}
                   {LABELS[c]}
                 </button>

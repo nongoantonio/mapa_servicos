@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ChevronDown, Droplet, MapPin, Plus, Search } from 'lucide-react'
+import { ChevronDown, Fuel, MapPin, Plus, Search } from 'lucide-react'
 import AuthPanel from './AuthPanel'
 import type { Place } from '../types'
 import { CATEGORY_LABELS, normalize } from '../lib/utils'
@@ -93,7 +93,7 @@ export default function Header({
                       {p.category === 'pharmacy' ? (
                         <Plus className="h-4 w-4" strokeWidth={3.5} />
                       ) : (
-                        <Droplet className="h-4 w-4" />
+                        <Fuel className="h-4 w-4" />
                       )}
                     </span>
                     <span className="min-w-0">

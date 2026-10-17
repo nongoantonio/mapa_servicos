@@ -1,4 +1,4 @@
-import { Droplet, Info, Map as MapIcon, MapPin, MessageSquare, Plus, SlidersHorizontal } from 'lucide-react'
+import { Fuel, Info, Map as MapIcon, MapPin, MessageSquare, Plus, SlidersHorizontal } from 'lucide-react'
 import { FILTERS, type Filter } from './Header'
 import { STATUS_COLORS } from '../lib/utils'
 
@@ -75,7 +75,7 @@ export default function Sidebar({
               )}
               {f.id === 'fuel' && (
                 <span className="flex h-6 w-6 items-center justify-center rounded-full bg-brand text-white ring-1 ring-white/40">
-                  <Droplet className="h-3.5 w-3.5" />
+                  <Fuel className="h-3.5 w-3.5" />
                 </span>
               )}
               {f.label}
@@ -113,7 +113,7 @@ export default function Sidebar({
         </div>
         <div className="flex items-center gap-3">
           <span className="flex h-11 w-11 items-center justify-center rounded-full bg-brand text-white">
-            <Droplet className="h-5 w-5" />
+            <Fuel className="h-5 w-5" />
           </span>
           <div className="leading-tight">
             <div className="text-xl font-bold text-white">{counts.fuel}</div>

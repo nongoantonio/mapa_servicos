@@ -5,7 +5,7 @@ import {
   Check,
   ChevronRight,
   Clock,
-  Droplet,
+  Fuel,
   MapPin,
   Navigation,
   Phone,
@@ -139,7 +139,7 @@ export default function DetailPanel({
             {isPharmacy ? (
               <Plus className="h-28 w-28" strokeWidth={3} />
             ) : (
-              <Droplet className="h-24 w-24" strokeWidth={2} />
+              <Fuel className="h-24 w-24" strokeWidth={2} />
             )}
           </div>
 
@@ -170,7 +170,7 @@ export default function DetailPanel({
                 isPharmacy ? 'bg-emerald-600' : 'bg-brand'
               }`}
             >
-              {isPharmacy ? <Plus className="h-9 w-9" strokeWidth={3.5} /> : <Droplet className="h-8 w-8" />}
+              {isPharmacy ? <Plus className="h-9 w-9" strokeWidth={3.5} /> : <Fuel className="h-8 w-8" />}
             </div>
             <div className="min-w-0">
               <h2 className="text-xl font-bold leading-tight text-slate-950">{place.name}</h2>

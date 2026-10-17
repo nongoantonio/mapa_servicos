@@ -1,44 +1,55 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   MapContainer,
   Marker,
+  Polyline,
   Popup,
   ScaleControl,
   TileLayer,
+  Tooltip,
   ZoomControl,
   useMap,
   useMapEvents,
 } from 'react-leaflet'
-import { divIcon, type DivIcon } from 'leaflet'
+import MarkerClusterGroup from 'react-leaflet-cluster'
+import { divIcon, latLngBounds, type DivIcon } from 'leaflet'
 import type { Session } from '@supabase/supabase-js'
-import { ChevronRight, Droplet, LocateFixed, MapPin, Plus } from 'lucide-react'
+import { ChevronRight, Fuel, LocateFixed, MapPin, Maximize2, Plus } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
+import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
 import { supabase } from '../lib/supabase'
 import type { Place } from '../types'
-import { CATEGORY_LABELS, STATUS_COLORS, type StatusKey } from '../lib/utils'
+import {
+  CATEGORY_LABELS,
+  STATUS_COLORS,
+  distanceKm,
+  formatDistance,
+  statusLabel,
+  type StatusKey,
+} from '../lib/utils'
 
 /* ── Ícones dos marcadores: cor = estado, símbolo = tipo de local ── */
 const svg = (inner: string) =>
-  `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
+  `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round">${inner}</svg>`
 
 const PLUS = '<path d="M5 12h14"/><path d="M12 5v14"/>'
-const DROP =
-  '<path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-4-6.5c-.5 2.5-2 4.9-4 6.5C6 11.1 5 13 5 15a7 7 0 0 0 7 7z"/>'
+const PUMP =
+  '<path d="M14 13h2a2 2 0 0 1 2 2v2a2 2 0 0 0 4 0v-6.998a2 2 0 0 0-.59-1.42L18 5"/><path d="M14 21V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v16"/><path d="M2 21h13"/><path d="M3 9h11"/>'
 
 const iconCache = new Map<string, DivIcon>()
 
-function pinIcon(category: Place['category'] | 'new', status: StatusKey | 'new', selected: boolean) {
+function pinIcon(category: Place['category'], status: StatusKey | 'new', selected: boolean) {
   const key = `${category}-${status}-${selected}`
   let icon = iconCache.get(key)
   if (!icon) {
     icon = divIcon({
       className: '',
       html: `<div class="pin pin-${status}${selected ? ' pin-selected' : ''}">${svg(
-        category === 'fuel' ? DROP : PLUS
+        category === 'fuel' ? PUMP : PLUS
       )}</div>`,
-      iconSize: [32, 32],
-      iconAnchor: [16, 16],
-      popupAnchor: [0, -18],
+      iconSize: [34, 34],
+      iconAnchor: [17, 17],
+      popupAnchor: [0, -20],
     })
     iconCache.set(key, icon)
   }
@@ -52,13 +63,65 @@ const USER_ICON = divIcon({
   iconAnchor: [9, 9],
 })
 
+// Círculo com o número de locais agrupados
+function clusterIcon(cluster: { getChildCount: () => number }) {
+  const count = cluster.getChildCount()
+  const size = count < 10 ? 42 : count < 50 ? 50 : 58
+  return divIcon({
+    html: `<div class="cluster" style="width:${size}px;height:${size}px">${count}</div>`,
+    className: '',
+    iconSize: [size, size],
+  })
+}
+
 /* ── Auxiliares do mapa ── */
-function FlyTo({ target, zoom }: { target: [number, number] | null; zoom: number }) {
+
+// Decide para onde o mapa olha:
+//  - local seleccionado: mostra-o junto com a tua posição (e a linha entre os dois)
+//  - sem seleção mas com localização: mostra-te a ti e os 3 locais mais próximos
+function AutoFocus({
+  user,
+  selected,
+  nearest,
+}: {
+  user: [number, number] | null
+  selected: Place | undefined
+  nearest: Place[]
+}) {
   const map = useMap()
   useEffect(() => {
-    if (target) map.flyTo(target, Math.max(map.getZoom(), zoom), { duration: 0.9 })
+    const sheetOffset = window.innerWidth < 1280 ? 340 : 60
+    const options = {
+      paddingTopLeft: [60, 70] as [number, number],
+      paddingBottomRight: [60, selected ? sheetOffset : 60] as [number, number],
+      maxZoom: 16,
+      duration: 0.9,
+    }
+    if (selected) {
+      const points: [number, number][] = [[selected.lat, selected.lng]]
+      if (user) points.push(user)
+      if (points.length === 1) map.flyTo(points[0], Math.max(map.getZoom(), 16), { duration: 0.9 })
+      else map.flyToBounds(latLngBounds(points), options)
+    } else if (user) {
+      const points: [number, number][] = [user, ...nearest.map((p) => [p.lat, p.lng] as [number, number])]
+      map.flyToBounds(latLngBounds(points), { ...options, maxZoom: 15 })
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target?.[0], target?.[1]])
+  }, [selected?.id, user?.[0], user?.[1]])
+  return null
+}
+
+// Botão "ver tudo": enquadra todos os locais visíveis
+function FitAll({ places, signal }: { places: Place[]; signal: number }) {
+  const map = useMap()
+  useEffect(() => {
+    if (signal === 0 || places.length === 0) return
+    map.flyToBounds(
+      latLngBounds(places.map((p) => [p.lat, p.lng] as [number, number])),
+      { padding: [60, 60], duration: 0.9 }
+    )
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [signal])
   return null
 }
 
@@ -90,6 +153,9 @@ export default function MapArea({
   onUserPos,
   error,
   onError,
+  onlyOpen,
+  onToggleOpen,
+  live,
 }: {
   places: Place[]
   selectedPlace: Place | undefined
@@ -100,15 +166,35 @@ export default function MapArea({
   onUserPos: (pos: [number, number]) => void
   error: string | null
   onError: (message: string | null) => void
+  onlyOpen: boolean
+  onToggleOpen: () => void
+  live: boolean
 }) {
   const [locating, setLocating] = useState(false)
   const [geoMessage, setGeoMessage] = useState<string | null>(null)
+  const [fitSignal, setFitSignal] = useState(0)
 
   const [addMode, setAddMode] = useState(false)
   const [newPos, setNewPos] = useState<[number, number] | null>(null)
   const [newName, setNewName] = useState('')
   const [newCategory, setNewCategory] = useState<Place['category']>('pharmacy')
   const [saving, setSaving] = useState(false)
+
+  // Os 3 locais mais próximos de ti (para o enquadramento inicial)
+  const nearest = useMemo(() => {
+    if (!userPos) return []
+    return [...places]
+      .map((p) => ({ p, km: distanceKm(userPos, [p.lat, p.lng]) }))
+      .sort((a, b) => a.km - b.km)
+      .slice(0, 3)
+      .map((x) => x.p)
+  }, [places, userPos])
+
+  // O local seleccionado fica fora do agrupamento, para estar sempre visível
+  const clusterPlaces = useMemo(
+    () => places.filter((p) => p.id !== selectedPlace?.id),
+    [places, selectedPlace?.id]
+  )
 
   function cancelAdd() {
     setAddMode(false)
@@ -159,9 +245,47 @@ export default function MapArea({
     )
   }
 
+  function renderPlace(p: Place, selected: boolean) {
+    const status: StatusKey = p.current_status ?? 'none'
+    return (
+      <Marker
+        key={p.id}
+        position={[p.lat, p.lng]}
+        icon={pinIcon(p.category, status, selected)}
+        zIndexOffset={selected ? 1000 : 0}
+        eventHandlers={{ click: () => onSelect(p.id) }}
+      >
+        {/* Ao passar o rato: nome e estado */}
+        <Tooltip direction="top" offset={[0, -20]} opacity={1}>
+          <strong>{p.name}</strong> · {statusLabel(status, p.category)}
+        </Tooltip>
+        <Popup autoPanPaddingTopLeft={[60, 80]}>
+          <div className="flex w-[260px] items-center gap-3 p-3.5 pr-9">
+            <div
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
+              style={{ backgroundColor: STATUS_COLORS[status] }}
+            >
+              {p.category === 'pharmacy' ? (
+                <Plus className="h-6 w-6" strokeWidth={3.5} />
+              ) : (
+                <Fuel className="h-5 w-5" />
+              )}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-bold text-slate-950">{p.name}</div>
+              <div className="text-xs text-slate-500">{CATEGORY_LABELS[p.category]}</div>
+              <div className="truncate text-xs text-slate-500">{p.address ?? 'Morada não disponível'}</div>
+            </div>
+            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
+          </div>
+        </Popup>
+      </Marker>
+    )
+  }
+
   return (
     <div className={`relative h-full w-full ${addMode ? 'adding' : ''}`}>
-      {/* Botão Perto de mim (por baixo dos botões de zoom) */}
+      {/* Botões à esquerda: localização e ver tudo */}
       <div className="absolute left-[10px] top-[100px] z-[1000] flex flex-col gap-2">
         <button
           type="button"
@@ -173,6 +297,15 @@ export default function MapArea({
         >
           <LocateFixed className={`h-5 w-5 ${locating ? 'animate-spin' : ''}`} />
         </button>
+        <button
+          type="button"
+          onClick={() => setFitSignal((n) => n + 1)}
+          title="Ver todos os locais"
+          aria-label="Ver todos os locais"
+          className={mapBtn}
+        >
+          <Maximize2 className="h-5 w-5" />
+        </button>
         {geoMessage && (
           <div className="w-52 rounded-xl bg-white px-3 py-2 text-xs text-slate-700 shadow-lg ring-1 ring-slate-200">
             {geoMessage}
@@ -180,9 +313,37 @@ export default function MapArea({
         )}
       </div>
 
+      {/* Barra no topo: só abertas + número de locais + ao vivo */}
+      <div className="absolute left-1/2 top-4 z-[1000] flex -translate-x-1/2 items-center gap-2">
+        <button
+          type="button"
+          onClick={onToggleOpen}
+          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ring-1 transition active:scale-95 ${
+            onlyOpen
+              ? 'bg-emerald-600 text-white ring-emerald-600'
+              : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'
+          }`}
+        >
+          <span className={`h-2 w-2 rounded-full ${onlyOpen ? 'bg-white' : 'bg-emerald-500'}`} />
+          Só abertas agora
+        </button>
+        <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg ring-1 ring-slate-200">
+          {places.length} {places.length === 1 ? 'local' : 'locais'}
+        </span>
+        {live && (
+          <span className="flex items-center gap-1.5 rounded-full bg-white px-3 py-2 text-xs font-semibold text-emerald-700 shadow-lg ring-1 ring-slate-200">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+            </span>
+            Ao vivo
+          </span>
+        )}
+      </div>
+
       {/* Erro */}
       {error && (
-        <div className="absolute left-1/2 top-4 z-[1000] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-start justify-between gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-medium text-white shadow-lg">
+        <div className="absolute left-1/2 top-16 z-[1000] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-start justify-between gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-medium text-white shadow-lg">
           <span>
             <strong className="text-sky-400">Erro:</strong> {error}
           </span>
@@ -202,7 +363,7 @@ export default function MapArea({
         </span>
         <span className="flex items-center gap-2">
           <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-white">
-            <Droplet className="h-4 w-4" />
+            <Fuel className="h-4 w-4" />
           </span>
           Bombas
         </span>
@@ -265,7 +426,7 @@ export default function MapArea({
                   {c === 'pharmacy' ? (
                     <Plus className="h-3.5 w-3.5" strokeWidth={3} />
                   ) : (
-                    <Droplet className="h-3.5 w-3.5" />
+                    <Fuel className="h-3.5 w-3.5" />
                   )}
                   {CATEGORY_LABELS[c]}
                 </button>
@@ -300,47 +461,38 @@ export default function MapArea({
         <ZoomControl position="topleft" />
         <ScaleControl position="bottomleft" imperial={false} />
 
-        <FlyTo target={userPos} zoom={15} />
-        <FlyTo target={selectedPlace ? [selectedPlace.lat, selectedPlace.lng] : null} zoom={15} />
+        <AutoFocus user={userPos} selected={selectedPlace} nearest={nearest} />
+        <FitAll places={places} signal={fitSignal} />
         <ClickToPlace active={addMode} onPick={setNewPos} />
 
         {userPos && <Marker position={userPos} icon={USER_ICON} />}
         {newPos && <Marker position={newPos} icon={pinIcon('pharmacy', 'new', false)} />}
 
-        {places.map((p) => {
-          const status: StatusKey = p.current_status ?? 'none'
-          const selected = p.id === selectedPlace?.id
-          return (
-            <Marker
-              key={p.id}
-              position={[p.lat, p.lng]}
-              icon={pinIcon(p.category, status, selected)}
-              zIndexOffset={selected ? 1000 : 0}
-              eventHandlers={{ click: () => onSelect(p.id) }}
-            >
-              <Popup autoPanPaddingTopLeft={[60, 60]}>
-                <div className="flex w-[260px] items-center gap-3 p-3.5 pr-9">
-                  <div
-                    className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
-                    style={{ backgroundColor: STATUS_COLORS[status] }}
-                  >
-                    {p.category === 'pharmacy' ? (
-                      <Plus className="h-6 w-6" strokeWidth={3.5} />
-                    ) : (
-                      <Droplet className="h-5 w-5" />
-                    )}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-sm font-bold text-slate-950">{p.name}</div>
-                    <div className="text-xs text-slate-500">{CATEGORY_LABELS[p.category]}</div>
-                    <div className="truncate text-xs text-slate-500">{p.address ?? 'Morada não disponível'}</div>
-                  </div>
-                  <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-                </div>
-              </Popup>
-            </Marker>
-          )
-        })}
+        {/* Linha tracejada de ti até ao local escolhido, com a distância */}
+        {userPos && selectedPlace && (
+          <Polyline
+            positions={[userPos, [selectedPlace.lat, selectedPlace.lng]]}
+            pathOptions={{ color: '#1d6ff2', weight: 3, dashArray: '6 9', opacity: 0.9 }}
+          >
+            <Tooltip permanent direction="center" className="distance-tip" opacity={1}>
+              {formatDistance(distanceKm(userPos, [selectedPlace.lat, selectedPlace.lng]))}
+            </Tooltip>
+          </Polyline>
+        )}
+
+        {/* Locais agrupados em círculos com número */}
+        <MarkerClusterGroup
+          chunkedLoading
+          maxClusterRadius={55}
+          showCoverageOnHover={false}
+          spiderfyOnMaxZoom
+          disableClusteringAtZoom={17}
+          iconCreateFunction={clusterIcon}
+        >
+          {clusterPlaces.map((p) => renderPlace(p, false))}
+        </MarkerClusterGroup>
+
+        {selectedPlace && renderPlace(selectedPlace, true)}
       </MapContainer>
     </div>
   )

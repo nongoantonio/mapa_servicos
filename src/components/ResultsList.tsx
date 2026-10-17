@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { ArrowLeft, Droplet, Loader2, LocateFixed, Map as MapIcon, Navigation, Plus } from 'lucide-react'
+import { ArrowLeft, Fuel, Loader2, LocateFixed, Map as MapIcon, Navigation, Plus } from 'lucide-react'
 import type { Place } from '../types'
 import {
   distanceKm,
@@ -187,7 +187,7 @@ export default function ResultsList({
                       isPharmacy ? 'bg-emerald-600' : 'bg-brand'
                     }`}
                   >
-                    {isPharmacy ? <Plus className="h-7 w-7" strokeWidth={3.5} /> : <Droplet className="h-6 w-6" />}
+                    {isPharmacy ? <Plus className="h-7 w-7" strokeWidth={3.5} /> : <Fuel className="h-6 w-6" />}
                   </span>
                   <div className="min-w-0 flex-1">
                     <h2 className="text-base font-bold leading-snug text-slate-950">{place.name}</h2>

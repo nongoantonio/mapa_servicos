@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { ArrowRight, Droplet, Loader2, MapPin, Plus } from 'lucide-react'
+import { ArrowRight, Fuel, Loader2, MapPin, Plus } from 'lucide-react'
 import type { Filter } from './Header'
 
 const OPTIONS = [
@@ -63,7 +63,7 @@ export default function Welcome({
                   {o.id === 'pharmacy' ? (
                     <Plus className="h-9 w-9" strokeWidth={3.5} />
                   ) : (
-                    <Droplet className="h-8 w-8" />
+                    <Fuel className="h-8 w-8" />
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
