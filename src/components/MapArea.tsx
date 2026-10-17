@@ -3,8 +3,6 @@ import {
   MapContainer,
   Marker,
   Polyline,
-  Popup,
-  ScaleControl,
   TileLayer,
   Tooltip,
   ZoomControl,
@@ -14,7 +12,7 @@ import {
 import MarkerClusterGroup from 'react-leaflet-cluster'
 import { divIcon, latLngBounds, type DivIcon } from 'leaflet'
 import type { Session } from '@supabase/supabase-js'
-import { ChevronRight, Fuel, LocateFixed, MapPin, Maximize2, Plus } from 'lucide-react'
+import { Fuel, LocateFixed, MapPin, Maximize2, Plus } from 'lucide-react'
 import 'leaflet/dist/leaflet.css'
 import 'react-leaflet-cluster/dist/assets/MarkerCluster.css'
 import { supabase } from '../lib/supabase'
@@ -49,7 +47,6 @@ function pinIcon(category: Place['category'], status: StatusKey | 'new', selecte
       )}</div>`,
       iconSize: [34, 34],
       iconAnchor: [17, 17],
-      popupAnchor: [0, -20],
     })
     iconCache.set(key, icon)
   }
@@ -90,10 +87,10 @@ function AutoFocus({
 }) {
   const map = useMap()
   useEffect(() => {
-    const sheetOffset = window.innerWidth < 1280 ? 340 : 60
     const options = {
       paddingTopLeft: [60, 70] as [number, number],
-      paddingBottomRight: [60, selected ? sheetOffset : 60] as [number, number],
+      // deixa espaço por baixo para o cartão do local
+      paddingBottomRight: [60, selected ? 250 : 60] as [number, number],
       maxZoom: 16,
       duration: 0.9,
     }
@@ -143,6 +140,13 @@ function ClickToPlace({
 const mapBtn =
   'flex h-10 w-10 items-center justify-center rounded-xl bg-white text-navy shadow-[0_4px_14px_rgba(2,6,23,0.18)] transition hover:bg-slate-50 active:scale-95 disabled:opacity-60'
 
+const LEGEND = [
+  { color: STATUS_COLORS.open, label: 'Aberto' },
+  { color: STATUS_COLORS.closed, label: 'Fechado' },
+  { color: STATUS_COLORS.out_of_stock, label: 'Sem stock' },
+  { color: STATUS_COLORS.none, label: 'Sem informação' },
+]
+
 export default function MapArea({
   places,
   selectedPlace,
@@ -156,6 +160,7 @@ export default function MapArea({
   onlyOpen,
   onToggleOpen,
   live,
+  cardOpen,
 }: {
   places: Place[]
   selectedPlace: Place | undefined
@@ -169,6 +174,7 @@ export default function MapArea({
   onlyOpen: boolean
   onToggleOpen: () => void
   live: boolean
+  cardOpen: boolean
 }) {
   const [locating, setLocating] = useState(false)
   const [geoMessage, setGeoMessage] = useState<string | null>(null)
@@ -253,32 +259,12 @@ export default function MapArea({
         position={[p.lat, p.lng]}
         icon={pinIcon(p.category, status, selected)}
         zIndexOffset={selected ? 1000 : 0}
-        eventHandlers={{ click: () => onSelect(p.id) }}
+        eventHandlers={{ click: () => !addMode && onSelect(p.id) }}
       >
         {/* Ao passar o rato: nome e estado */}
         <Tooltip direction="top" offset={[0, -20]} opacity={1}>
           <strong>{p.name}</strong> · {statusLabel(status, p.category)}
         </Tooltip>
-        <Popup autoPanPaddingTopLeft={[60, 80]}>
-          <div className="flex w-[260px] items-center gap-3 p-3.5 pr-9">
-            <div
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-white"
-              style={{ backgroundColor: STATUS_COLORS[status] }}
-            >
-              {p.category === 'pharmacy' ? (
-                <Plus className="h-6 w-6" strokeWidth={3.5} />
-              ) : (
-                <Fuel className="h-5 w-5" />
-              )}
-            </div>
-            <div className="min-w-0 flex-1">
-              <div className="truncate text-sm font-bold text-slate-950">{p.name}</div>
-              <div className="text-xs text-slate-500">{CATEGORY_LABELS[p.category]}</div>
-              <div className="truncate text-xs text-slate-500">{p.address ?? 'Morada não disponível'}</div>
-            </div>
-            <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" />
-          </div>
-        </Popup>
       </Marker>
     )
   }
@@ -314,11 +300,11 @@ export default function MapArea({
       </div>
 
       {/* Barra no topo: só abertas + número de locais + ao vivo */}
-      <div className="absolute left-1/2 top-4 z-[1000] flex -translate-x-1/2 items-center gap-2">
+      <div className="absolute left-1/2 top-3 z-[1000] flex -translate-x-1/2 items-center gap-2">
         <button
           type="button"
           onClick={onToggleOpen}
-          className={`flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold shadow-lg ring-1 transition active:scale-95 ${
+          className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-xs font-semibold shadow-lg ring-1 transition active:scale-95 ${
             onlyOpen
               ? 'bg-emerald-600 text-white ring-emerald-600'
               : 'bg-white text-slate-700 ring-slate-200 hover:bg-slate-50'
@@ -327,7 +313,7 @@ export default function MapArea({
           <span className={`h-2 w-2 rounded-full ${onlyOpen ? 'bg-white' : 'bg-emerald-500'}`} />
           Só abertas agora
         </button>
-        <span className="rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg ring-1 ring-slate-200">
+        <span className="hidden rounded-full bg-white px-3 py-2 text-xs font-semibold text-slate-600 shadow-lg ring-1 ring-slate-200 sm:block">
           {places.length} {places.length === 1 ? 'local' : 'locais'}
         </span>
         {live && (
@@ -345,49 +331,47 @@ export default function MapArea({
       {error && (
         <div className="absolute left-1/2 top-16 z-[1000] flex w-[calc(100%-2rem)] max-w-md -translate-x-1/2 items-start justify-between gap-3 rounded-xl bg-slate-950 px-4 py-2.5 text-xs font-medium text-white shadow-lg">
           <span>
-            <strong className="text-sky-400">Erro:</strong> {error}
+            <strong className="text-emerald-400">Erro:</strong> {error}
           </span>
-          <button type="button" onClick={() => onError(null)} className="font-bold text-sky-300 underline">
+          <button type="button" onClick={() => onError(null)} className="font-bold text-emerald-300 underline">
             Fechar
           </button>
         </div>
       )}
 
-      {/* Barra de tipos (canto inferior esquerdo) */}
-      <div className="absolute bottom-12 left-4 z-[1000] hidden items-center gap-5 rounded-2xl bg-white px-4 py-3 text-xs font-medium text-slate-700 shadow-lg sm:flex">
-        <span className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-emerald-600 text-white">
-            <Plus className="h-4 w-4" strokeWidth={3.5} />
-          </span>
-          Farmácias
-        </span>
-        <span className="flex items-center gap-2">
-          <span className="flex h-7 w-7 items-center justify-center rounded-full bg-brand text-white">
-            <Fuel className="h-4 w-4" />
-          </span>
-          Bombas
-        </span>
+      {/* Coluna da direita: adicionar local + legenda */}
+      <div
+        className={`absolute right-3 z-[1000] flex flex-col items-end gap-3 lg:bottom-10 lg:right-4 ${
+          cardOpen ? 'bottom-64' : 'bottom-6'
+        }`}
+      >
+        {session && !addMode && (
+          <button
+            type="button"
+            onClick={() => setAddMode(true)}
+            className="flex items-center gap-2 rounded-full bg-emerald-600 px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/30 transition hover:bg-emerald-700 active:scale-95"
+          >
+            <Plus className="h-4 w-4" strokeWidth={3} />
+            Adicionar local
+          </button>
+        )}
+        <div className="hidden space-y-2 rounded-2xl bg-white px-4 py-3 text-xs text-slate-700 shadow-lg ring-1 ring-slate-200 lg:block">
+          {LEGEND.map((l) => (
+            <div key={l.label} className="flex items-center gap-2">
+              <span className="h-3 w-3 rounded-full" style={{ backgroundColor: l.color }} />
+              {l.label}
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Adicionar local */}
-      {session && !addMode && (
-        <button
-          type="button"
-          onClick={() => setAddMode(true)}
-          className="absolute bottom-10 right-4 z-[1000] flex items-center gap-2 rounded-full bg-brand px-4 py-3 text-sm font-semibold text-white shadow-lg shadow-brand/30 transition hover:bg-blue-700 active:scale-95"
-        >
-          <Plus className="h-4 w-4" strokeWidth={3} />
-          Adicionar local
-        </button>
-      )}
-
       {/* Instrução e formulário de novo local */}
-      <div className="pointer-events-none absolute bottom-10 left-1/2 z-[1000] flex w-[calc(100%-1.5rem)] max-w-sm -translate-x-1/2 flex-col items-center gap-2">
+      <div className="pointer-events-none absolute bottom-6 left-1/2 z-[1100] flex w-[calc(100%-1.5rem)] max-w-sm -translate-x-1/2 flex-col items-center gap-2">
         {addMode && !newPos && (
           <div className="pointer-events-auto flex items-center gap-3 rounded-full bg-slate-950 px-4 py-2.5 text-xs text-white shadow-lg">
-            <MapPin className="h-4 w-4 text-sky-400" />
+            <MapPin className="h-4 w-4 text-emerald-400" />
             <span>Toca no mapa onde fica o local</span>
-            <button type="button" onClick={cancelAdd} className="font-semibold text-sky-300 hover:underline">
+            <button type="button" onClick={cancelAdd} className="font-semibold text-emerald-300 hover:underline">
               Cancelar
             </button>
           </div>
@@ -408,7 +392,7 @@ export default function MapArea({
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="Nome do local"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-xs focus:border-emerald-600 focus:outline-none focus:ring-2 focus:ring-emerald-600/20"
             />
 
             <div className="flex gap-2">
@@ -419,7 +403,7 @@ export default function MapArea({
                   onClick={() => setNewCategory(c)}
                   className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border px-2 py-2 text-xs font-semibold transition-colors ${
                     newCategory === c
-                      ? 'border-brand bg-blue-50 text-brand'
+                      ? 'border-emerald-600 bg-emerald-50 text-emerald-700'
                       : 'border-slate-200 text-slate-600 hover:bg-slate-50'
                   }`}
                 >
@@ -444,7 +428,7 @@ export default function MapArea({
               <button
                 type="submit"
                 disabled={saving}
-                className="flex-1 rounded-xl bg-brand py-2.5 text-xs font-bold text-white transition hover:bg-blue-700 disabled:opacity-60"
+                className="flex-1 rounded-xl bg-emerald-600 py-2.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-60"
               >
                 {saving ? 'A guardar...' : 'Guardar'}
               </button>
@@ -459,7 +443,6 @@ export default function MapArea({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         <ZoomControl position="topleft" />
-        <ScaleControl position="bottomleft" imperial={false} />
 
         <AutoFocus user={userPos} selected={selectedPlace} nearest={nearest} />
         <FitAll places={places} signal={fitSignal} />
@@ -472,7 +455,7 @@ export default function MapArea({
         {userPos && selectedPlace && (
           <Polyline
             positions={[userPos, [selectedPlace.lat, selectedPlace.lng]]}
-            pathOptions={{ color: '#1d6ff2', weight: 3, dashArray: '6 9', opacity: 0.9 }}
+            pathOptions={{ color: '#059669', weight: 3, dashArray: '6 9', opacity: 0.9 }}
           >
             <Tooltip permanent direction="center" className="distance-tip" opacity={1}>
               {formatDistance(distanceKm(userPos, [selectedPlace.lat, selectedPlace.lng]))}
