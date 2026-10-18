@@ -1,169 +1,164 @@
-import { useMemo, useState } from 'react'
-import { Fuel, MapPin, Plus, Search } from 'lucide-react'
-import AuthPanel from './AuthPanel'
-import { PlaceIcon } from './ui'
-import { TABS, type Tab } from './BottomNav'
-import type { Place } from '../types'
-import { CATEGORY_LABELS, normalize } from '../lib/utils'
+import { useEffect, useState } from 'react'
+import type { Session } from '@supabase/supabase-js'
+import { LogOut, X } from 'lucide-react'
+import { supabase } from '../lib/supabase'
+import Logo from './Logo'
 
-export type Filter = 'all' | 'pharmacy' | 'fuel'
+const inputCls =
+  'w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20'
 
-const FILTERS = [
-  { id: 'all' as const, label: 'Todos', icon: MapPin },
-  { id: 'pharmacy' as const, label: 'Farmácias', icon: Plus },
-  { id: 'fuel' as const, label: 'Bombas', icon: Fuel },
-]
+export default function AuthDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [session, setSession] = useState<Session | null>(null)
+  const [mode, setMode] = useState<'login' | 'signup'>('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [message, setMessage] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
 
-function SearchBox({ places, onPick }: { places: Place[]; onPick: (id: string) => void }) {
-  const [query, setQuery] = useState('')
-  const [focused, setFocused] = useState(false)
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => setSession(data.session))
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => setSession(s))
+    return () => sub.subscription.unsubscribe()
+  }, [])
 
-  const results = useMemo(() => {
-    const q = normalize(query.trim())
-    if (q.length < 2) return []
-    return places
-      .filter((p) => normalize(p.name).includes(q) || normalize(p.address ?? '').includes(q))
-      .slice(0, 6)
-  }, [places, query])
+  // Esc fecha a janela
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    document.addEventListener('keydown', onKey)
+    return () => document.removeEventListener('keydown', onKey)
+  }, [open, onClose])
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setMessage(null)
+
+    const { error } =
+      mode === 'login'
+        ? await supabase.auth.signInWithPassword({ email, password })
+        : await supabase.auth.signUp({ email, password })
+
+    setLoading(false)
+    if (error) {
+      setMessage(error.message)
+    } else {
+      setPassword('')
+      onClose()
+    }
+  }
+
+  if (!open) return null
+
+  const userEmail = session?.user.email ?? ''
 
   return (
-    <div className="relative min-w-0 flex-1">
-      <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-      <input
-        type="text"
-        value={query}
-        onChange={(e) => setQuery(e.target.value)}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setTimeout(() => setFocused(false), 150)}
-        placeholder="Pesquisar por nome ou endereço..."
-        className="h-12 w-full rounded-2xl bg-white/10 pl-12 pr-4 text-sm text-white placeholder:text-slate-400 focus:bg-white/15 focus:outline-none focus:ring-2 focus:ring-emerald-500/60"
-      />
-
-      {focused && query.trim().length >= 2 && (
-        <div className="absolute left-0 right-0 top-14 z-[2000] overflow-hidden rounded-2xl bg-white py-1 text-slate-900 shadow-2xl ring-1 ring-slate-200">
-          {results.length === 0 ? (
-            <div className="px-4 py-3 text-sm text-slate-500">Nenhum local encontrado.</div>
-          ) : (
-            results.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => {
-                  onPick(p.id)
-                  setQuery('')
-                  setFocused(false)
-                }}
-                className="flex w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50"
-              >
-                <PlaceIcon category={p.category} className="h-9 w-9" />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold">{p.name}</span>
-                  <span className="block truncate text-xs text-slate-500">
-                    {CATEGORY_LABELS[p.category]}
-                    {p.address ? ` · ${p.address}` : ''}
-                  </span>
-                </span>
-              </button>
-            ))
-          )}
-        </div>
-      )}
-    </div>
-  )
-}
-
-function Chips({ filter, onFilter }: { filter: Filter; onFilter: (f: Filter) => void }) {
-  return (
-    <div className="flex gap-2 overflow-x-auto">
-      {FILTERS.map(({ id, label, icon: Icon }) => {
-        const active = filter === id
-        return (
-          <button
-            key={id}
-            type="button"
-            onClick={() => onFilter(id)}
-            className={`flex items-center gap-2 whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold transition-colors ${
-              active ? 'bg-emerald-500 text-white shadow-lg shadow-emerald-500/30' : 'bg-white/10 text-slate-200 hover:bg-white/15'
-            }`}
-          >
-            <Icon className="h-4 w-4" strokeWidth={id === 'pharmacy' ? 3 : 2} />
-            {label}
-          </button>
-        )
-      })}
-    </div>
-  )
-}
-
-export default function Header({
-  places,
-  filter,
-  onFilter,
-  onPick,
-  tab,
-  onTab,
-}: {
-  places: Place[]
-  filter: Filter
-  onFilter: (f: Filter) => void
-  onPick: (id: string) => void
-  tab: Tab
-  onTab: (t: Tab) => void
-}) {
-  return (
-    <header className="relative z-[1600] bg-ink text-white">
-      <div className="flex items-center gap-3 px-4 py-3 lg:h-20 lg:gap-5 lg:px-6 lg:py-0">
-        {/* Marca */}
-        <button
-          type="button"
-          onClick={() => onTab('map')}
-          className="flex shrink-0 items-center gap-3 text-left"
-        >
-          <span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-500 shadow-lg shadow-emerald-500/30">
-            <MapPin className="h-6 w-6 text-white" />
-          </span>
-          <span className="leading-tight">
-            <span className="block text-lg font-bold">Mapa de Serviços</span>
-            <span className="block text-xs text-slate-400">Luanda, Angola</span>
-          </span>
-        </button>
-
-        {/* Computador: pesquisa e filtros na mesma barra */}
-        <div className="hidden min-w-0 max-w-md flex-1 lg:flex">
-          <SearchBox places={places} onPick={onPick} />
-        </div>
-        <div className="hidden lg:block">
-          <Chips filter={filter} onFilter={onFilter} />
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          {/* Computador: atalhos para Mapa, Lista e Sobre */}
-          <div className="hidden items-center gap-1 rounded-full bg-white/5 p-1 lg:flex">
-            {TABS.map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                onClick={() => onTab(id)}
-                title={label}
-                className={`flex items-center gap-2 rounded-full px-3 py-2 text-sm font-medium transition-colors ${
-                  tab === id ? 'bg-white/15 text-white' : 'text-slate-300 hover:bg-white/10'
-                }`}
-              >
-                <Icon className="h-4 w-4" />
-                <span className="hidden xl:inline">{label}</span>
-              </button>
-            ))}
+    <div
+      className="fixed inset-0 z-[3000] flex items-end justify-center bg-black/55 sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className="w-full max-w-sm rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl"
+      >
+        <div className="flex items-center gap-3">
+          <Logo className="h-10 w-10" />
+          <div className="flex-1 leading-tight">
+            <div className="text-lg font-extrabold tracking-wide text-ink">KUBIKA</div>
+            <div className="text-xs text-slate-500">Serviços perto de ti.</div>
           </div>
-          <AuthPanel />
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Fechar"
+            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-400 hover:bg-slate-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
         </div>
-      </div>
 
-      {/* Telemóvel: pesquisa e filtros por baixo */}
-      <div className="space-y-3 px-4 pb-3 lg:hidden">
-        <SearchBox places={places} onPick={onPick} />
-        <Chips filter={filter} onFilter={onFilter} />
+        {session ? (
+          <div className="mt-6 space-y-4">
+            <div className="flex items-center gap-3 rounded-2xl bg-slate-50 p-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand text-lg font-bold uppercase text-white">
+                {userEmail.charAt(0) || '?'}
+              </div>
+              <div className="min-w-0 leading-tight">
+                <div className="truncate text-sm font-bold text-slate-900">{userEmail}</div>
+                <div className="text-xs text-slate-500">Sessão iniciada</div>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600">
+              Podes reportar o estado dos locais, avaliar e adicionar locais que faltam no mapa.
+            </p>
+            <button
+              type="button"
+              onClick={async () => {
+                await supabase.auth.signOut()
+                onClose()
+              }}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 py-3.5 text-sm font-bold text-slate-700 hover:bg-slate-50"
+            >
+              <LogOut className="h-4 w-4" />
+              Sair
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="mt-6 space-y-3">
+            <div>
+              <h2 className="text-xl font-bold text-slate-950">
+                {mode === 'login' ? 'Bem-vindo de volta' : 'Criar conta'}
+              </h2>
+              <p className="text-sm text-slate-500">
+                {mode === 'login'
+                  ? 'Entra para reportar estados e avaliar locais.'
+                  : 'Junta-te à comunidade e ajuda os outros.'}
+              </p>
+            </div>
+
+            <input
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="Email"
+              className={inputCls}
+            />
+            <input
+              type="password"
+              required
+              minLength={6}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Palavra-passe (mín. 6)"
+              className={inputCls}
+            />
+
+            {message && (
+              <div className="rounded-xl bg-slate-100 px-4 py-3 text-sm font-medium text-slate-800">{message}</div>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-2xl bg-brand-dark py-3.5 text-base font-bold text-white transition hover:bg-brand active:scale-[0.98] disabled:opacity-60"
+            >
+              {loading ? 'A processar...' : mode === 'login' ? 'Entrar' : 'Criar conta'}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                setMode(mode === 'login' ? 'signup' : 'login')
+                setMessage(null)
+              }}
+              className="w-full text-center text-sm font-semibold text-brand hover:underline"
+            >
+              {mode === 'login' ? 'Ainda não tens conta? Criar conta' : 'Já tens conta? Entrar'}
+            </button>
+          </form>
+        )}
       </div>
-    </header>
+    </div>
   )
 }

@@ -1,5 +1,6 @@
-import { Fuel, HeartHandshake, Plus, Search, ShieldCheck } from 'lucide-react'
+import { Fuel, HeartHandshake, Leaf, Plus, Search, ShieldCheck, Users } from 'lucide-react'
 import { STATUS_COLORS } from '../lib/utils'
+import Logo from './Logo'
 
 const LEGEND = [
   { color: STATUS_COLORS.open, label: 'Aberto' },
@@ -8,21 +9,40 @@ const LEGEND = [
   { color: STATUS_COLORS.none, label: 'Sem informação (ninguém confirmou ainda)' },
 ]
 
+const VALUES = [
+  { icon: Leaf, label: 'Cidades mais limpas' },
+  { icon: Users, label: 'Comunidade mais forte' },
+  { icon: Leaf, label: 'Um futuro mais verde' },
+]
+
 export default function AboutView() {
   return (
     <div className="absolute inset-0 z-[1400] overflow-y-auto bg-slate-100">
       <div className="mx-auto max-w-2xl space-y-4 p-4 pb-10">
         <div className="rounded-3xl bg-gradient-to-br from-ink to-ink-soft p-6 text-white">
-          <h1 className="text-2xl font-bold">Mapa de Serviços</h1>
-          <p className="mt-2 text-sm text-slate-300">
-            Encontra farmácias e bombas de combustível em Luanda e vê se estão abertas, com informação
-            dada pela própria comunidade.
+          <div className="flex items-center gap-3">
+            <Logo className="h-14 w-14" />
+            <div className="leading-tight">
+              <h1 className="text-3xl font-extrabold tracking-wide">KUBIKA</h1>
+              <p className="text-sm text-emerald-100/80">Serviços perto de ti.</p>
+            </div>
+          </div>
+          <p className="mt-5 text-xl font-semibold italic leading-snug text-emerald-50">
+            Uma Angola mais conectada, mais saudável, mais sustentável.
           </p>
+          <div className="mt-5 grid grid-cols-3 gap-2 text-center text-[11px] font-medium text-emerald-100">
+            {VALUES.map(({ icon: Icon, label }, i) => (
+              <div key={i} className="flex flex-col items-center gap-1.5 rounded-2xl bg-white/10 px-2 py-3">
+                <Icon className="h-5 w-5 text-emerald-300" />
+                {label}
+              </div>
+            ))}
+          </div>
         </div>
 
         <div className="rounded-3xl bg-white p-5 ring-1 ring-slate-200">
           <h2 className="flex items-center gap-2 text-base font-bold text-slate-950">
-            <Search className="h-5 w-5 text-emerald-600" />
+            <Search className="h-5 w-5 text-brand" />
             Como usar
           </h2>
           <ol className="mt-3 space-y-3 text-sm text-slate-700">
@@ -42,7 +62,7 @@ export default function AboutView() {
 
         <div className="rounded-3xl bg-white p-5 ring-1 ring-slate-200">
           <h2 className="flex items-center gap-2 text-base font-bold text-slate-950">
-            <HeartHandshake className="h-5 w-5 text-emerald-600" />
+            <HeartHandshake className="h-5 w-5 text-brand" />
             Como ajudar
           </h2>
           <p className="mt-3 text-sm text-slate-700">

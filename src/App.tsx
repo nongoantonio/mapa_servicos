@@ -9,6 +9,7 @@ import PlaceCard from './components/PlaceCard'
 import DetailScreen from './components/DetailScreen'
 import ResultsList from './components/ResultsList'
 import AboutView from './components/AboutView'
+import AuthDialog from './components/AuthDialog'
 
 export default function App() {
   const [places, setPlaces] = useState<Place[]>([])
@@ -26,6 +27,7 @@ export default function App() {
   const [locationError, setLocationError] = useState<string | null>(null)
   const [onlyOpen, setOnlyOpen] = useState(false)
   const [live, setLive] = useState(false)
+  const [authOpen, setAuthOpen] = useState(false)
 
   const loadPlaces = useCallback(async () => {
     const { data, error } = await supabase.from('places_with_status').select('*')
@@ -188,6 +190,8 @@ export default function App() {
         onPick={pickPlace}
         tab={tab}
         onTab={setTab}
+        session={session}
+        onOpenAuth={() => setAuthOpen(true)}
       />
 
       <main className="relative min-h-0 flex-1 bg-slate-100">
@@ -248,7 +252,19 @@ export default function App() {
         {tab === 'about' && <AboutView />}
       </main>
 
-      <BottomNav tab={tab} onTab={setTab} />
+      <BottomNav
+        tab={tab}
+        onTab={setTab}
+        onLocate={() => {
+          setTab('map')
+          locate()
+        }}
+        locating={locating}
+        loggedIn={!!session}
+        onProfile={() => setAuthOpen(true)}
+      />
+
+      <AuthDialog open={authOpen} onClose={() => setAuthOpen(false)} />
     </div>
   )
 }
